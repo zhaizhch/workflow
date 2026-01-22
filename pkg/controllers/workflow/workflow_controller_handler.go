@@ -23,6 +23,7 @@ import (
 	workflowv1alpha1 "github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 	"github.com/workflow.sh/work-flow/pkg/apis/helpers"
 	"github.com/workflow.sh/work-flow/pkg/controllers/apis"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workload"
 )
 
 func (jf *workflowcontroller) enqueue(req apis.FlowRequest) {
@@ -101,6 +102,15 @@ func (jf *workflowcontroller) updateGenericJob(oldObj, newObj interface{}) {
 
 	if newUnstructured.GetResourceVersion() == oldUnstructured.GetResourceVersion() {
 		return
+	}
+
+	wl := workload.GetWorkload(newUnstructured.GroupVersionKind().Group)
+	if wl != nil {
+		oldStatus := wl.GetJobStatus(oldUnstructured)
+		newStatus := wl.GetJobStatus(newUnstructured)
+		if oldStatus.State == newStatus.State {
+			return
+		}
 	}
 
 	jobFlowName := getWorkflowNameByObj(newUnstructured)

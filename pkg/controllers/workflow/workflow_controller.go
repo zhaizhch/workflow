@@ -22,7 +22,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -44,6 +43,7 @@ import (
 	"github.com/workflow.sh/work-flow/pkg/controllers/apis"
 	"github.com/workflow.sh/work-flow/pkg/controllers/framework"
 	workflowstate "github.com/workflow.sh/work-flow/pkg/controllers/workflow/state"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workload"
 )
 
 func init() {
@@ -122,21 +122,16 @@ func (jf *workflowcontroller) Initialize(opt *framework.ControllerOption) error 
 	// Initialize dynamic informer factory
 	jf.dynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(jf.dynamicClient, 0)
 
-	// Support Volcano Job
-	vcJobGVR := schema.GroupVersionResource{Group: "batch.volcano.sh", Version: "v1alpha1", Resource: "jobs"}
-	vcJobInformer := jf.dynamicInformerFactory.ForResource(vcJobGVR)
-	vcJobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: jf.updateGenericJob,
-	})
-	jf.genericJobSynced = append(jf.genericJobSynced, vcJobInformer.Informer().HasSynced)
-
-	// Support PyTorchJob
-	pytorchGVR := schema.GroupVersionResource{Group: "kubeflow.org", Version: "v1", Resource: "pytorchjobs"}
-	pytorchInformer := jf.dynamicInformerFactory.ForResource(pytorchGVR)
-	pytorchInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: jf.updateGenericJob,
-	})
-	jf.genericJobSynced = append(jf.genericJobSynced, pytorchInformer.Informer().HasSynced)
+	// Register informers for all supported workloads
+	for _, wl := range workload.GetAllWorkloads() {
+		for _, gvr := range wl.GetGVR() {
+			informer := jf.dynamicInformerFactory.ForResource(gvr)
+			informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+				UpdateFunc: jf.updateGenericJob,
+			})
+			jf.genericJobSynced = append(jf.genericJobSynced, informer.Informer().HasSynced)
+		}
+	}
 
 	jf.maxRequeueNum = opt.MaxRequeueNum
 	if jf.maxRequeueNum < 0 {

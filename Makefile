@@ -60,10 +60,10 @@ build: init
 	go build -o ${BIN_DIR}/flow-controller ./cmd/flow-controller
 
 images-build-controller:
-	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow:${IMAGE_TAG} .
+	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow:${IMAGE_TAG} -f build/Dockerfile .
 
 images-build-admission:
-	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow-admission:${IMAGE_TAG} -f Dockerfile.webhook .
+	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow-admission:${IMAGE_TAG} -f build/Dockerfile.webhook .
 
 images-push: 
 	docker push ${IMAGE_PREFIX}/work-flow:${IMAGE_TAG}

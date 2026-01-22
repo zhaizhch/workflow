@@ -4,25 +4,8 @@
 .vscode/
 .cache/
 
-venv/
 output/
-/agent/
-validate/
-logs/
-swagger/
-/*output*/
-
-#protos
-*.pb.go
-*.pb.gw.go
-*.pb.validate.go
-
-buf.lock
 
 # Configurations
 .env
 
-
-!/proto/validate/.gitkeep
-!/proto/validate/
-!/scripts/.env

@@ -38,10 +38,10 @@ spec:
     pytorchReplicaSpecs:
       Master:
         replicas: 1
-        schedulerName: volcano
         restartPolicy: OnFailure
         template:
           spec:
+            schedulerName: volcano
             containers:
               - name: pytorch
                 image: busybox
@@ -49,10 +49,10 @@ spec:
             restartPolicy: OnFailure
       Worker:
         replicas: 1
-        schedulerName: volcano
         restartPolicy: OnFailure
         template:
           spec:
+            schedulerName: volcano
             containers:
               - name: pytorch
                 image: busybox

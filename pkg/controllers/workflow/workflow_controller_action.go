@@ -20,10 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"time"
 
-	kubeflow "github.com/kubeflow/training-operator/pkg/apis/kubeflow.org/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +33,7 @@ import (
 	v1alpha1flow "github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 	"github.com/workflow.sh/work-flow/pkg/client/clientset/versioned/scheme"
 	"github.com/workflow.sh/work-flow/pkg/controllers/workflow/state"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workload"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
@@ -147,37 +145,15 @@ func (jf *workflowcontroller) judge(jobFlow *v1alpha1flow.Workflow, flow v1alpha
 			return false, err
 		}
 
-		// 判断workload是否completed
-		if gvr.Group == "batch.volcano.sh" { // workload 为vcjob时的判断
-			phase, found, _ := unstructured.NestedString(job.Object, "status", "state", "phase")
-			if !found {
-				if succeeded, found, _ := unstructured.NestedInt64(job.Object, "status", "succeeded"); found && succeeded > 0 {
-					phase = string(v1alpha1.Completed)
-				}
-			}
-			if v1alpha1.JobPhase(phase) != v1alpha1.Completed {
-				return false, nil
-			}
-		} else { // workload为kubeflow时的判断
-			completed := false
-			if conditions, found, _ := unstructured.NestedSlice(job.Object, "status", "conditions"); found {
-				for _, c := range conditions {
-					condition, ok := c.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					t, _ := condition["type"].(string)
-					s, _ := condition["status"].(string)
-					// Kubeflow jobs use "Succeeded"
-					if (t == string(v1alpha1flow.Succeed) || t == string(kubeflow.JobSucceeded)) && s == "True" {
-						completed = true
-						break
-					}
-				}
-			}
-			if !completed {
-				return false, nil
-			}
+		// Determine job status using workload interface
+		wl := workload.GetWorkload(gvr.Group)
+		if wl == nil {
+			klog.Warningf("No workload handler found for group %s", gvr.Group)
+			return false, nil
+		}
+		jobStatus := wl.GetJobStatus(job)
+		if jobStatus.State != v1alpha1.Completed {
+			return false, nil
 		}
 	}
 	return true, nil
@@ -227,47 +203,14 @@ func (jf *workflowcontroller) getAllJobStatus(workFlow *v1alpha1flow.Workflow) (
 	}
 
 	for _, job := range jobList {
-		// Determine normalized job phase
-		jobPhase := v1alpha1.Pending // default
-
-		// 1. Try Volcano style
-		phase, found, _ := unstructured.NestedString(job.Object, "status", "state", "phase")
-		if found {
-			jobPhase = v1alpha1.JobPhase(phase)
-		} else if succeeded, found, _ := unstructured.NestedInt64(job.Object, "status", "succeeded"); found && succeeded > 0 {
-			// Volcano fallback
-			jobPhase = v1alpha1.Completed
-		} else {
-			// 2. Try Kubeflow style (conditions)
-			if conds, found, _ := unstructured.NestedSlice(job.Object, "status", "conditions"); found && len(conds) > 0 {
-				sort.Slice(conds, func(i, j int) bool {
-					c1 := conds[i].(map[string]interface{})
-					c2 := conds[j].(map[string]interface{})
-					t1Str, _ := c1["lastTransitionTime"].(string)
-					t2Str, _ := c2["lastTransitionTime"].(string)
-					t1, _ := time.Parse(time.RFC3339, t1Str)
-					t2, _ := time.Parse(time.RFC3339, t2Str)
-					return t1.Before(t2)
-				})
-
-				lastCond := conds[len(conds)-1].(map[string]interface{})
-				t, _ := lastCond["type"].(string)
-				s, _ := lastCond["status"].(string)
-
-				if s == "True" {
-					switch kubeflow.JobConditionType(t) {
-					case kubeflow.JobSucceeded:
-						jobPhase = v1alpha1.Completed
-					case kubeflow.JobFailed:
-						jobPhase = v1alpha1.Failed
-					case kubeflow.JobRunning:
-						jobPhase = v1alpha1.Running
-					case kubeflow.JobCreated, kubeflow.JobRestarting, kubeflow.JobSuspended:
-						jobPhase = v1alpha1.Pending
-					}
-				}
-			}
+		// Determine normalized job status using workload interface
+		wl := workload.GetWorkload(job.GroupVersionKind().Group)
+		if wl == nil {
+			klog.Warningf("No workload handler found for group %s, skipping job %s", job.GroupVersionKind().Group, job.GetName())
+			continue
 		}
+		jobStatus := wl.GetJobStatus(&job)
+		jobPhase := jobStatus.State
 
 		// Update maps and lists
 		if _, ok := statusListJobMap[jobPhase]; ok {
@@ -316,13 +259,6 @@ func (jf *workflowcontroller) getAllJobStatus(workFlow *v1alpha1flow.Workflow) (
 		State:          workFlow.Status.State,
 	}
 	return &jobFlowStatus, nil
-}
-
-func getRunningHistories(jobStatusList []v1alpha1flow.JobStatus, job *v1alpha1.Job) []v1alpha1flow.JobRunningHistory {
-	// This helper is hard to adapt without strong typing on the job.
-	// It might be unused if we inline the logic or skip it.
-	// Leaving it for now but it's not called by the updated code above.
-	return nil
 }
 
 func (jf *workflowcontroller) constructJobFromTemplate(jobFlow *v1alpha1flow.Workflow, flowName string, jobName string) (*unstructured.Unstructured, *schema.GroupVersionResource, error) {

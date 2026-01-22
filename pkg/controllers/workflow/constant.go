@@ -17,8 +17,8 @@ limitations under the License.
 package workflow
 
 const (
-	// Volcano string of volcano apiVersion
-	Volcano = "workflow"
+	// WorkflowAPIVersion string of workflow apiVersion
+	WorkflowAPIVersion = "workflow"
 	// Workflow kind of jobFlow
 	Workflow = "Workflow"
 	// CreatedByWorkTemplate the vcjob annotation and label of created by jobTemplate

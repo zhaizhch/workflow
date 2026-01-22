@@ -45,7 +45,7 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 
 func getWorkflowNameByObj(obj metav1.Object) string {
 	for _, owner := range obj.GetOwnerReferences() {
-		if owner.Kind == Workflow && strings.Contains(owner.APIVersion, Volcano) {
+		if owner.Kind == Workflow && strings.Contains(owner.APIVersion, WorkflowAPIVersion) {
 			return owner.Name
 		}
 	}

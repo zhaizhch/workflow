@@ -22,5 +22,5 @@ COPY . .
 RUN make build
 
 FROM alpine:latest
-COPY --from=builder /go/src/github.com/workflow.sh/work-flow/_output/bin/flow-controller /flow-controller
+COPY --from=builder /go/src/github.com/workflow.sh/work-flow/output/bin/flow-controller /flow-controller
 ENTRYPOINT ["/flow-controller"]

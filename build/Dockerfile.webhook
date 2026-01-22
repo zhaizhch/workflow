@@ -20,7 +20,7 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     && mv kubectl /usr/local/bin/
 
 # Copy binaries and scripts
-COPY --from=builder /go/src/github.com/workflow.sh/work-flow/_output/bin/flow-controller /flow-controller
+COPY --from=builder /go/src/github.com/workflow.sh/work-flow/output/bin/flow-controller /flow-controller
 COPY hack/gen-admission-secret.sh /gen-admission-secret.sh
 RUN chmod +x /gen-admission-secret.sh
 
