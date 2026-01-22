@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BIN_DIR=_output/bin
+BIN_DIR=output/bin
 LOCALBIN=$(shell pwd)/_output/bin
 export CGO_ENABLED=0
 IMAGE_PREFIX?=hub.bjuci.io/dev
