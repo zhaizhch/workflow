@@ -1,0 +1,27 @@
+# Copyright 2026 The Volcano Authors.
+
+FROM golang:1.25.0 AS builder
+
+WORKDIR /go/src/github.com/workflow.sh/work-flow/
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN make build
+
+FROM alpine:latest
+
+# Install openssl and curl (to download kubectl)
+RUN apk add --no-cache openssl curl
+
+# Install kubectl
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl \
+    && mv kubectl /usr/local/bin/
+
+# Copy binaries and scripts
+COPY --from=builder /go/src/github.com/workflow.sh/work-flow/_output/bin/flow-controller /flow-controller
+COPY hack/gen-admission-secret.sh /gen-admission-secret.sh
+RUN chmod +x /gen-admission-secret.sh
+
+ENTRYPOINT ["/flow-controller"]

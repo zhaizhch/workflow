@@ -1,0 +1,60 @@
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: vcjob-template
+  namespace: zzc-system
+spec:
+  gvr:
+    group: batch.volcano.sh
+    version: v1alpha1
+    resource: jobs
+  jobSpec:
+    schedulerName: volcano
+    minAvailable: 1
+    tasks:
+      - replicas: 1
+        name: task-1
+        template:
+          spec:
+            containers:
+              - command:
+                  - sleep
+                  - "60"
+                image: busybox
+                name: task-1
+            restartPolicy: OnFailure
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: pytorchjob-template
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: pytorchjobs
+  jobSpec:
+    pytorchReplicaSpecs:
+      Master:
+        replicas: 1
+        schedulerName: volcano
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: pytorch
+                image: busybox
+                command: ["sleep", "60"]
+            restartPolicy: OnFailure
+      Worker:
+        replicas: 1
+        schedulerName: volcano
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: pytorch
+                image: busybox
+                command: ["sleep", "60"]
+            restartPolicy: OnFailure

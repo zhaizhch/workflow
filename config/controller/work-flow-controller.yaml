@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zzc-system
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: work-flow-controller
+  namespace: zzc-system
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: work-flow-controller-role
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: work-flow-controller-role-binding
+subjects:
+  - kind: ServiceAccount
+    name: work-flow-controller
+    namespace: zzc-system
+roleRef:
+  kind: ClusterRole
+  name: work-flow-controller-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: work-flow-service
+  namespace: zzc-system
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: work-flow-admission
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: work-flow-admission
+webhooks:
+  - name: validateworkflow.workflow.sh
+    rules:
+      - apiGroups:
+          - flow.workflow.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - workflows
+    clientConfig:
+      service:
+        name: work-flow-service
+        namespace: zzc-system
+        path: /workflows/validate
+        port: 443
+      # caBundle should be injected by cert-manager or manually populated
+    admissionReviewVersions:
+      - v1
+    sideEffects: None
+    timeoutSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: work-flow-controller
+  namespace: zzc-system
+  labels:
+    app: work-flow-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: work-flow-controller
+  template:
+    metadata:
+      labels:
+        app: work-flow-controller
+    spec:
+      serviceAccountName: work-flow-controller
+      containers:
+        - name: flow-controller
+          image: hub.bjuci.io/dev/work-flow:latest
+          imagePullPolicy: Always
+          args:
+            - --logtostderr
+            - --v=4
+            - --enable-controller=true
+            - --enabled-admission=/workflows/validate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: work-flow-admission
+  namespace: zzc-system
+  labels:
+    app: work-flow-admission
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: work-flow-admission
+  template:
+    metadata:
+      labels:
+        app: work-flow-admission
+    spec:
+      serviceAccountName: work-flow-controller  # Reuse service account if permissions are same
+      containers:
+        - name: flow-admission
+          image: hub.bjuci.io/dev/work-flow-admission:latest
+          imagePullPolicy: Always
+          command: ["/bin/sh", "-c", "/gen-admission-secret.sh --service work-flow-service --namespace zzc-system --secret work-flow-admission-secret && cp tls.crt /etc/workflow/certs/ && cp tls.key /etc/workflow/certs/ && /flow-controller --logtostderr --v=4 --enable-controller=false --enabled-admission=/workflows/validate --tls-cert-file=/etc/workflow/certs/tls.crt --tls-private-key-file=/etc/workflow/certs/tls.key"]
+          ports:
+            - containerPort: 8443
+              name: webhook-server
+              protocol: TCP
+          volumeMounts:
+            - name: admission-certs
+              mountPath: /etc/workflow/certs
+      volumes:
+        - name: admission-certs
+          emptyDir: {}
