@@ -4,10 +4,23 @@ metadata:
   name: sample-workflow
   namespace: zzc-system
 spec:
-  jobRetainPolicy: retain
+  jobRetainPolicy: delete
   flows:
-    - name: vcjob-template
     - name: pytorchjob-template
+    - name: vcjob-template
+      dependsOn:
+        targets:
+          - pytorchjob-template
+    - name: paddlejob-template
+      dependsOn:
+        targets:
+          - pytorchjob-template
+    - name: mpijob-template
       dependsOn:
         targets:
           - vcjob-template
+          - paddlejob-template
+    - name: deploy-template
+      dependsOn:
+        targets:
+          - mpijob-template

@@ -58,3 +58,91 @@ spec:
                 image: busybox
                 command: ["sleep", "60"]
             restartPolicy: OnFailure
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: mpijob-template
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: mpijobs
+  jobSpec:
+    slotsPerWorker: 1
+    cleanPodPolicy: None
+    mpiReplicaSpecs:
+      Launcher:
+        replicas: 1
+        template:
+           spec:
+             containers:
+             - image: busybox
+               name: mpi-launcher
+               command: ["sleep", "60"]
+      Worker:
+        replicas: 1
+        template:
+          spec:
+            containers:
+            - image: busybox
+              name: mpi-worker
+              command: ["sleep", "60"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: paddlejob-template
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: paddlejobs
+  jobSpec:
+    cleanPodPolicy: Running
+    paddleReplicaSpecs:
+      Master:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sleep", "60"]
+      Worker:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sleep", "60"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: deploy-template
+  namespace: zzc-system
+spec:
+  gvr:
+    group: apps
+    version: v1
+    resource: deployments
+  jobSpec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: deploy-task
+    template:
+      metadata:
+        labels:
+          app: deploy-task
+      spec:
+        containers:
+        - name: nginx
+          image: busybox
+          command: ["sleep", "60"]

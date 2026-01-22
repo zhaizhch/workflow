@@ -4,12 +4,18 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes"
 )
 
 var (
-	registry = sets.New[Workload]()
-	lock     sync.RWMutex
+	registry   = sets.New[Workload]()
+	lock       sync.RWMutex
+	kubeClient kubernetes.Interface
 )
+
+func SetClient(client kubernetes.Interface) {
+	kubeClient = client
+}
 
 func Register(wl Workload) {
 	lock.Lock()

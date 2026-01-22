@@ -92,6 +92,7 @@ func (jf *workflowcontroller) Name() string {
 
 func (jf *workflowcontroller) Initialize(opt *framework.ControllerOption) error {
 	jf.kubeClient = opt.KubeClient
+	workload.SetClient(opt.KubeClient)
 	jf.Config = opt.Config
 	jf.vcClient = opt.VolcanoClient
 	jf.flowClient = opt.FlowClient
