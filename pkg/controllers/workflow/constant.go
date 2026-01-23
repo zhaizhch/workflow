@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ package workflow
 const (
 	// WorkflowAPIVersion string of workflow apiVersion
 	WorkflowAPIVersion = "workflow"
-	// Workflow kind of jobFlow
+	// Workflow kind of workflow
 	Workflow = "Workflow"
-	// CreatedByWorkTemplate the vcjob annotation and label of created by jobTemplate
+	// CreatedByWorkTemplate the job annotation and label of created by jobTemplate
 	CreatedByWorkTemplate = "workflow.sh/createdByWorkTemplate"
-	// CreatedByWorkflow the vcjob annotation and label of created by jobFlow
+	// CreatedByWorkflow the job annotation and label of created by workflow
 	CreatedByWorkflow = "workflow.sh/createdByWorkflow"
 )

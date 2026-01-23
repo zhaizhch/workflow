@@ -1,0 +1,222 @@
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: infra-ready
+  namespace: zzc-system
+spec:
+  gvr:
+    group: batch.volcano.sh
+    version: v1alpha1
+    resource: jobs
+  jobSpec:
+    minAvailable: 1
+    tasks:
+      - replicas: 1
+        name: init
+        template:
+          spec:
+            containers:
+              - name: init-container
+                image: busybox
+                command: ["sh", "-c", "echo 'Infra ready...' && sleep 60"]
+                ports:
+                  - containerPort: 80
+            restartPolicy: OnFailure
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: data-preprocessing
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: mpijobs
+  jobSpec:
+    slotsPerWorker: 1
+    runPolicy:
+      cleanPodPolicy: Running
+    mpiReplicaSpecs:
+      Launcher:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - image: busybox
+                name: mpi-launcher
+                command: ["sh", "-c", "echo 'Distributed Preprocessing...' && sleep 10"]
+      Worker:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - image: busybox
+                name: mpi-worker
+                command: ["sleep", "10"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: gpu-training-task
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: pytorchjobs
+  jobSpec:
+    pytorchReplicaSpecs:
+      Master:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: pytorch
+                image: hub.bjuci.io/dev/python:3.9-slim
+                imagePullPolicy: Always
+                # 模拟一个监听 8080 (HTTP) 和 2222 (TCP) 端口的服务
+                command: 
+                  - python3
+                  - -c
+                  - |
+                    import http.server, socketserver, threading, socket, time
+                    class HealthHandler(http.server.SimpleHTTPRequestHandler):
+                        def do_GET(self):
+                            if self.path == '/healthz':
+                                self.send_response(200)
+                                self.end_headers()
+                                self.wfile.write(b'OK')
+                            else:
+                                super().do_GET()
+                    def run_http():
+                        http.server.HTTPServer(('', 8080), HealthHandler).serve_forever()
+                    def run_tcp():
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                            s.bind(('0.0.0.0', 2222))
+                            s.listen()
+                            while True:
+                                conn, _ = s.accept()
+                                conn.close()
+                    threading.Thread(target=run_http, daemon=True).start()
+                    threading.Thread(target=run_tcp, daemon=True).start()
+                    time.sleep(120)
+      Worker:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: pytorch
+                image: hub.bjuci.io/dev/python:3.9-slim
+                imagePullPolicy: Always
+                command: ["sleep", "60"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: model-validation
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: paddlejobs
+  jobSpec:
+    paddleReplicaSpecs:
+      Master:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sh", "-c", "echo 'Validating Paddle model...' && exit 0 && sleep 60"]
+      Worker:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sleep", "10"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: failed-task
+  namespace: zzc-system
+spec:
+  gvr:
+    group: batch.volcano.sh
+    version: v1alpha1
+    resource: jobs
+  jobSpec:
+    minAvailable: 1
+    tasks:
+      - replicas: 1
+        name: fail
+        template:
+          spec:
+            containers:
+              - name: fail-container
+                image: busybox
+                command: ["sh", "-c", "echo 'Simulating failure...' && exit 1"]
+            restartPolicy: OnFailure
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: probe-task
+  namespace: zzc-system
+spec:
+  gvr:
+    group: kubeflow.org
+    version: v1
+    resource: paddlejobs
+  jobSpec:
+    paddleReplicaSpecs:
+      Master:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sh", "-c", "echo 'Probe success!' && exit 0"]
+      Worker:
+        replicas: 1
+        restartPolicy: OnFailure
+        template:
+          spec:
+            containers:
+              - name: paddle
+                image: busybox
+                command: ["sleep", "10"]
+---
+apiVersion: flow.workflow.sh/v1alpha1
+kind: WorkTemplate
+metadata:
+  name: logic-test-task
+  namespace: zzc-system
+spec:
+  gvr:
+    group: batch.volcano.sh
+    version: v1alpha1
+    resource: jobs
+  jobSpec:
+    minAvailable: 1
+    tasks:
+      - replicas: 1
+        name: main
+        template:
+          spec:
+            containers:
+              - name: test
+                image: busybox
+                command: ["sh", "-c", "echo 'Logical dependencies satisfied!'"]
+            restartPolicy: OnFailure

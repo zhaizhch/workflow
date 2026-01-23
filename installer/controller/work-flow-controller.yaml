@@ -89,6 +89,15 @@ spec:
       labels:
         app: work-flow-controller
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - bjcjgpu001
       serviceAccountName: work-flow-controller
       containers:
         - name: flow-controller
@@ -117,6 +126,15 @@ spec:
       labels:
         app: work-flow-admission
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - bjcjgpu001
       serviceAccountName: work-flow-controller  # Reuse service account if permissions are same
       containers:
         - name: flow-admission

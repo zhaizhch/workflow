@@ -19,7 +19,8 @@ package v1alpha1
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 // WorkflowSpec defines the desired state of Workflow
@@ -28,8 +29,13 @@ type WorkflowSpec struct {
 	Flows []Flow `json:"flows,omitempty" protobuf:"bytes,1,rep,name=flows"`
 	// +optional
 	JobRetainPolicy RetainPolicy `json:"jobRetainPolicy,omitempty" protobuf:"bytes,2,opt,name=jobRetainPolicy"`
+	// +optional
+	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,3,opt,name=schedulerName"`
+	// +optional
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,4,rep,name=plugins"`
 }
 
+// +k8s:deepcopy-gen=true
 // Flow defines the dependent of jobs
 type Flow struct {
 	// +kubebuilder:validation:MinLength=1
@@ -38,19 +44,66 @@ type Flow struct {
 	// +optional
 	DependsOn *DependsOn `json:"dependsOn,omitempty" protobuf:"bytes,2,opt,name=dependsOn"`
 	// +optional
-	Patch *Patch `json:"patch,omitempty" protobuf:"bytes,3,opt,name=patch"`
+	For *For `json:"for,omitempty" protobuf:"bytes,7,opt,name=for"`
+	// +optional
+	Retry *Retry `json:"retry,omitempty" protobuf:"bytes,8,opt,name=retry"`
+	// +optional
+	Patch *Patch `json:"patch,omitempty" protobuf:"bytes,9,opt,name=patch"`
+}
+
+// +k8s:deepcopy-gen=true
+type For struct {
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty" protobuf:"varint,1,opt,name=replicas"`
+	// +optional
+	DependsOn *DependsOn `json:"dependsOn,omitempty" protobuf:"bytes,2,opt,name=dependsOn"`
+}
+
+// +k8s:deepcopy-gen=true
+type Retry struct {
+	// +optional
+	MaxRetries int32 `json:"maxRetries,omitempty" protobuf:"varint,1,opt,name=maxRetries"`
+	// +optional
+	Interval string `json:"interval,omitempty" protobuf:"bytes,2,opt,name=interval"`
 }
 
 type DependsOn struct {
+	// Simple AND: All targets must meet condition
+	// +optional
+	Targets []string `json:"targets,omitempty" protobuf:"bytes,1,rep,name=targets"`
+	// OR logic: One of these groups must meet condition.
+	// Each group is itself an AND of its targets/probe.
+	// +optional
+	OrGroups []DependencyGroup `json:"orGroups,omitempty" protobuf:"bytes,4,rep,name=orGroups"`
+	// +optional
+	Probe *Probe `json:"probe,omitempty" protobuf:"bytes,2,opt,name=probe"`
+	// +optional
+	Strategy DependencyStrategy `json:"strategy,omitempty" protobuf:"bytes,3,opt,name=strategy"`
+}
+
+// +k8s:deepcopy-gen=true
+type DependencyGroup struct {
 	// +optional
 	Targets []string `json:"targets,omitempty" protobuf:"bytes,1,rep,name=targets"`
 	// +optional
 	Probe *Probe `json:"probe,omitempty" protobuf:"bytes,2,opt,name=probe"`
+	// +optional
+	Strategy DependencyStrategy `json:"strategy,omitempty" protobuf:"bytes,3,opt,name=strategy"`
 }
 
+type DependencyStrategy string
+
+const (
+	All DependencyStrategy = "All"
+	Any DependencyStrategy = "Any"
+)
+
+// +k8s:deepcopy-gen=true
+// +kubebuilder:pruning:PreserveUnknownFields
+// +kubebuilder:validation:Schemaless
 type Patch struct {
 	// +optional
-	v1alpha1.JobSpec `json:"jobSpec,omitempty" protobuf:"bytes,1,opt,name=jobSpec"`
+	runtime.RawExtension `json:",inline"`
 }
 
 type Probe struct {
@@ -110,7 +163,9 @@ type WorkflowStatus struct {
 	// +optional
 	UnKnowJobs []string `json:"unKnowJobs,omitempty" protobuf:"bytes,6,rep,name=unKnowJobs"`
 	// +optional
-	JobStatusList []JobStatus `json:"jobStatusList,omitempty" protobuf:"bytes,7,rep,name=jobStatusList"`
+	SkippedJobs []string `json:"skippedJobs,omitempty" protobuf:"bytes,7,rep,name=skippedJobs"`
+	// +optional
+	JobStatusList []JobStatus `json:"jobStatusList,omitempty" protobuf:"bytes,8,rep,name=jobStatusList"`
 	// +optional
 	Conditions map[string]Condition `json:"conditions,omitempty" protobuf:"bytes,8,rep,name=conditions"`
 	// +optional
@@ -121,7 +176,7 @@ type JobStatus struct {
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 	// +optional
-	State v1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,2,opt,name=state"`
+	State batchv1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,2,opt,name=state"`
 	// +optional
 	StartTimestamp metav1.Time `json:"startTimestamp,omitempty" protobuf:"bytes,3,opt,name=startTimestamp"`
 	// +optional
@@ -139,7 +194,7 @@ type JobRunningHistory struct {
 	// +optional
 	EndTimestamp metav1.Time `json:"endTimestamp,omitempty" protobuf:"bytes,2,opt,name=endTimestamp"`
 	// +optional
-	State v1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
+	State batchv1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
 }
 
 type State struct {
@@ -164,13 +219,19 @@ const (
 	Failed      Phase = "Failed"
 	Running     Phase = "Running"
 	Pending     Phase = "Pending"
+	Skipped     Phase = "Skipped"
 )
 
+const (
+	JobSkipped batchv1alpha1.JobPhase = "Skipped"
+)
+
+// +k8s:deepcopy-gen=true
 type Condition struct {
-	Phase           v1alpha1.JobPhase             `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
-	CreateTimestamp metav1.Time                   `json:"createTime,omitempty" protobuf:"bytes,2,opt,name=createTime"`
-	RunningDuration *metav1.Duration              `json:"runningDuration,omitempty" protobuf:"bytes,3,opt,name=runningDuration"`
-	TaskStatusCount map[string]v1alpha1.TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,4,rep,name=taskStatusCount"`
+	Phase           batchv1alpha1.JobPhase             `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+	CreateTimestamp metav1.Time                        `json:"createTime,omitempty" protobuf:"bytes,2,opt,name=createTime"`
+	RunningDuration *metav1.Duration                   `json:"runningDuration,omitempty" protobuf:"bytes,3,opt,name=runningDuration"`
+	TaskStatusCount map[string]batchv1alpha1.TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,4,rep,name=taskStatusCount"`
 }
 
 // +genclient

@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 	switch action {
 	case v1alpha1.SyncWorkflowAction:
 		return SyncWorkflow(p.jobFlow, func(status *v1alpha1.WorkflowStatus, allJobList int) {
-			if len(status.CompletedJobs) == allJobList {
+			if len(status.CompletedJobs)+len(status.SkippedJobs) == allJobList {
 				UpdateWorkflowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
 			} else if len(status.FailedJobs) > 0 {

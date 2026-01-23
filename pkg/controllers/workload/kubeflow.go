@@ -60,6 +60,12 @@ func (k *kubeflowWorkload) GetGVR() []schema.GroupVersionResource {
 	}
 }
 
+func (k *kubeflowWorkload) GetPodLabels(job *unstructured.Unstructured) map[string]string {
+	return map[string]string{
+		"training.kubeflow.org/job-name": job.GetName(),
+	}
+}
+
 func init() {
 	Register(&kubeflowWorkload{})
 }

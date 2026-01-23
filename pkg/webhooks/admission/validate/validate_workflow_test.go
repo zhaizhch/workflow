@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -261,9 +261,9 @@ func TestValidateWorkflowCreate(t *testing.T) {
 		},
 	}
 
-	// create fake volcano clientset
-	config.VolcanoClient = fakeclient.NewSimpleClientset()
-	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	// create fake workflow clientset
+	config.WorkflowClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.WorkflowClient, 0)
 
 	stopCh := make(chan struct{})
 	informerFactory.Start(stopCh)

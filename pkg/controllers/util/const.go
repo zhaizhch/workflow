@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,6 @@ limitations under the License.
 package util
 
 const (
-	// VolcanoSubSystemName - subsystem name in prometheus used by volcano
-	VolcanoSubSystemName = "volcano"
+	// WorkflowSubSystemName - subsystem name in prometheus used by workflow
+	WorkflowSubSystemName = "workflow"
 )

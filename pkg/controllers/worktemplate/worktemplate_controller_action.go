@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,22 +28,22 @@ import (
 	v1alpha1flow "github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 )
 
-func (jt *worktemplatecontroller) syncWorkTemplate(jobTemplate *v1alpha1flow.WorkTemplate) error {
+func (wtc *worktemplatecontroller) syncWorkTemplate(workTemplate *v1alpha1flow.WorkTemplate) error {
 	// search the jobs created by WorkTemplate
 	labelSelector := map[string]string{
-		CreatedByWorkTemplate: GetTemplateString(jobTemplate.Namespace, jobTemplate.Name),
+		CreatedByWorkTemplate: GetTemplateString(workTemplate.Namespace, workTemplate.Name),
 	}
 
 	gvr := schema.GroupVersionResource{
-		Group:    jobTemplate.Spec.GVR.Group,
-		Version:  jobTemplate.Spec.GVR.Version,
-		Resource: jobTemplate.Spec.GVR.Resource,
+		Group:    workTemplate.Spec.GVR.Group,
+		Version:  workTemplate.Spec.GVR.Version,
+		Resource: workTemplate.Spec.GVR.Resource,
 	}
 
-	jobList, err := jt.getAllCRDsByLabel(context.Background(), gvr, jobTemplate.Namespace, labelSelector)
+	jobList, err := wtc.getAllCRDsByLabel(context.Background(), gvr, workTemplate.Namespace, labelSelector)
 	if err != nil {
-		klog.Errorf("Failed to list jobs of WorkTemplate %v/%v: %v",
-			jobTemplate.Namespace, jobTemplate.Name, err)
+		klog.Errorf("failed to list jobs of WorkTemplate %s/%s: %v",
+			workTemplate.Namespace, workTemplate.Name, err)
 		return err
 	}
 
@@ -51,24 +51,24 @@ func (jt *worktemplatecontroller) syncWorkTemplate(jobTemplate *v1alpha1flow.Wor
 		return nil
 	}
 
-	jobListName := make([]string, 0)
+	jobNames := make([]string, 0, len(jobList))
 	for _, job := range jobList {
-		jobListName = append(jobListName, job.GetName())
+		jobNames = append(jobNames, job.GetName())
 	}
-	jobTemplate.Status.JobDependsOnList = jobListName
+	workTemplate.Status.JobDependsOnList = jobNames
 
-	//update jobTemplate status
-	_, err = jt.flowClient.FlowV1alpha1().WorkTemplates(jobTemplate.Namespace).UpdateStatus(context.Background(), jobTemplate, metav1.UpdateOptions{})
+	// update WorkTemplate status
+	_, err = wtc.flowClient.FlowV1alpha1().WorkTemplates(workTemplate.Namespace).UpdateStatus(context.Background(), workTemplate, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Errorf("Failed to update status of WorkTemplate %v/%v: %v",
-			jobTemplate.Namespace, jobTemplate.Name, err)
+		klog.Errorf("failed to update status of WorkTemplate %s/%s: %v",
+			workTemplate.Namespace, workTemplate.Name, err)
 		return err
 	}
 	return nil
 }
 
 // getAllCRDsByLabel lists resources using dynamic client
-func (jt *worktemplatecontroller) getAllCRDsByLabel(
+func (wtc *worktemplatecontroller) getAllCRDsByLabel(
 	ctx context.Context,
 	gvr schema.GroupVersionResource,
 	namespace string,
@@ -83,14 +83,14 @@ func (jt *worktemplatecontroller) getAllCRDsByLabel(
 
 	if namespace == "" {
 		// Cluster-scoped resources
-		list, err := jt.dynamicClient.Resource(gvr).List(ctx, listOptions)
+		list, err := wtc.dynamicClient.Resource(gvr).List(ctx, listOptions)
 		if err != nil {
 			return nil, err
 		}
 		resultList = list.Items
 	} else {
 		// Namespaced resources
-		list, err := jt.dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, listOptions)
+		list, err := wtc.dynamicClient.Resource(gvr).Namespace(namespace).List(ctx, listOptions)
 		if err != nil {
 			return nil, err
 		}

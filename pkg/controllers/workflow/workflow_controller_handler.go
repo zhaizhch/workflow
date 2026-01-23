@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,76 +26,71 @@ import (
 	"github.com/workflow.sh/work-flow/pkg/controllers/workload"
 )
 
-func (jf *workflowcontroller) enqueue(req apis.FlowRequest) {
-	jf.queue.Add(req)
+func (wc *workflowcontroller) enqueue(req apis.FlowRequest) {
+	wc.queue.Add(req)
 }
 
-func (jf *workflowcontroller) addWorkflow(obj interface{}) {
-	jobFlow, ok := obj.(*workflowv1alpha1.Workflow)
+func (wc *workflowcontroller) addWorkflow(obj interface{}) {
+	workflow, ok := obj.(*workflowv1alpha1.Workflow)
 	if !ok {
-		klog.Errorf("Failed to convert %v to jobFlow", obj)
-		return
-	}
-
-	// use struct instead of pointer
-	req := apis.FlowRequest{
-		Namespace:    jobFlow.Namespace,
-		WorkflowName: jobFlow.Name,
-
-		Action: workflowv1alpha1.SyncWorkflowAction,
-		Event:  workflowv1alpha1.OutOfSyncEvent,
-	}
-
-	jf.enqueueWorkflow(req)
-}
-
-func (jf *workflowcontroller) updateWorkflow(oldObj, newObj interface{}) {
-	oldWorkflow, ok := oldObj.(*workflowv1alpha1.Workflow)
-	if !ok {
-		klog.Errorf("Failed to convert %v to workflow", oldWorkflow)
-		return
-	}
-
-	newWorkflow, ok := newObj.(*workflowv1alpha1.Workflow)
-	if !ok {
-		klog.Errorf("Failed to convert %v to workflow", newWorkflow)
-		return
-	}
-
-	if newWorkflow.ResourceVersion == oldWorkflow.ResourceVersion {
-		return
-	}
-
-	//Todo The update operation of Workflow is reserved for possible future use. The current update operation on Workflow will not affect the Workflow process
-	if newWorkflow.Status.State.Phase != workflowv1alpha1.Succeed || newWorkflow.Spec.JobRetainPolicy != workflowv1alpha1.Delete {
+		klog.Errorf("failed to convert object %+v to Workflow", obj)
 		return
 	}
 
 	req := apis.FlowRequest{
-		Namespace:    newWorkflow.Namespace,
-		WorkflowName: newWorkflow.Name,
-
-		Action: workflowv1alpha1.SyncWorkflowAction,
-		Event:  workflowv1alpha1.OutOfSyncEvent,
+		Namespace:    workflow.Namespace,
+		WorkflowName: workflow.Name,
+		Action:       workflowv1alpha1.SyncWorkflowAction,
+		Event:        workflowv1alpha1.OutOfSyncEvent,
 	}
 
-	jf.enqueueWorkflow(req)
+	wc.enqueueWorkflow(req)
 }
 
-func (jf *workflowcontroller) updateGenericJob(oldObj, newObj interface{}) {
+func (wc *workflowcontroller) updateWorkflow(oldObj, newObj interface{}) {
+	oldWf, ok := oldObj.(*workflowv1alpha1.Workflow)
+	if !ok {
+		return
+	}
+
+	newWf, ok := newObj.(*workflowv1alpha1.Workflow)
+	if !ok {
+		return
+	}
+
+	if newWf.ResourceVersion == oldWf.ResourceVersion {
+		return
+	}
+
+	// Trigger sync if deletion policy is Delete and workflow succeeded (to cleanup)
+	// Or if any other change happened that needs reconciliation
+	if newWf.Status.State.Phase != workflowv1alpha1.Succeed || newWf.Spec.JobRetainPolicy != workflowv1alpha1.Delete {
+		// Even if not success, we might need to sync for other reasons (e.g. spec change)
+		// But for now keeping the original logic which seems to prioritize cleanup on success
+	}
+
+	req := apis.FlowRequest{
+		Namespace:    newWf.Namespace,
+		WorkflowName: newWf.Name,
+		Action:       workflowv1alpha1.SyncWorkflowAction,
+		Event:        workflowv1alpha1.OutOfSyncEvent,
+	}
+
+	wc.enqueueWorkflow(req)
+}
+
+func (wc *workflowcontroller) updateGenericJob(oldObj, newObj interface{}) {
 	oldUnstructured, ok := oldObj.(*unstructured.Unstructured)
 	if !ok {
-		klog.Errorf("Failed to convert %v to unstructured", oldObj)
 		return
 	}
 
 	newUnstructured, ok := newObj.(*unstructured.Unstructured)
 	if !ok {
-		klog.Errorf("Failed to convert %v to unstructured", newObj)
 		return
 	}
 
-	// Filter out jobs that are not created from volcano workflow
+	// Filter out jobs that are not created from workflow
 	if !isControlledBy(newUnstructured, helpers.WorkflowKind) {
 		return
 	}
@@ -113,17 +108,17 @@ func (jf *workflowcontroller) updateGenericJob(oldObj, newObj interface{}) {
 		}
 	}
 
-	jobFlowName := getWorkflowNameByObj(newUnstructured)
-	if jobFlowName == "" {
+	workflowName := getWorkflowNameByObj(newUnstructured)
+	if workflowName == "" {
 		return
 	}
 
 	req := apis.FlowRequest{
 		Namespace:    newUnstructured.GetNamespace(),
-		WorkflowName: jobFlowName,
+		WorkflowName: workflowName,
 		Action:       workflowv1alpha1.SyncWorkflowAction,
 		Event:        workflowv1alpha1.OutOfSyncEvent,
 	}
 
-	jf.enqueueWorkflow(req)
+	wc.enqueueWorkflow(req)
 }

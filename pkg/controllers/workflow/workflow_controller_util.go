@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@ limitations under the License.
 package workflow
 
 import (
+	"fmt"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func getJobName(jobFlowName string, jobTemplateName string) string {
-	return jobFlowName + "-" + jobTemplateName
+func getJobName(workflowName string, workTemplateName string, index int) string {
+	if index >= 0 {
+		return fmt.Sprintf("%s-%s-%d", workflowName, workTemplateName, index)
+	}
+	return workflowName + "-" + workTemplateName
 }
 
 // GenerateObjectString generates the object information string using namespace and name

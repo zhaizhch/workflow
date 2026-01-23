@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
-	upstreamclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	upstreaminformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	batchclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 
 	flowclientset "github.com/workflow.sh/work-flow/pkg/client/clientset/versioned"
 	flowinformer "github.com/workflow.sh/work-flow/pkg/client/informers/externalversions"
@@ -76,14 +76,14 @@ func main() {
 		klog.Fatalf("Error building kubernetes client: %s", err.Error())
 	}
 
-	upstreamClient, err := upstreamclientset.NewForConfig(cfg)
+	batchClient, err := batchclientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building volcano upstream client: %s", err.Error())
+		klog.Fatalf("Error building batch client: %s", err.Error())
 	}
 
 	flowClient, err := flowclientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building volcano flow client: %s", err.Error())
+		klog.Fatalf("Error building workflow client: %s", err.Error())
 	}
 
 	// Create informers
@@ -91,20 +91,20 @@ func main() {
 	resyncPeriod := 30 * time.Second
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, resyncPeriod)
-	upstreamInformerFactory := upstreaminformer.NewSharedInformerFactory(upstreamClient, resyncPeriod)
+	batchInformerFactory := batchinformer.NewSharedInformerFactory(batchClient, resyncPeriod)
 	flowInformerFactory := flowinformer.NewSharedInformerFactory(flowClient, resyncPeriod)
 
 	// Create ControllerOption
 	opt := &framework.ControllerOption{
-		KubeClient:                kubeClient,
-		VolcanoClient:             upstreamClient,
-		FlowClient:                flowClient,
-		SharedInformerFactory:     kubeInformerFactory,
-		VCSharedInformerFactory:   upstreamInformerFactory,
-		FlowSharedInformerFactory: flowInformerFactory,
-		Config:                    cfg,
-		WorkerNum:                 uint32(workers),
-		MaxRequeueNum:             10, // Default value
+		KubeClient:                 kubeClient,
+		BatchClient:                batchClient,
+		FlowClient:                 flowClient,
+		SharedInformerFactory:      kubeInformerFactory,
+		BatchSharedInformerFactory: batchInformerFactory,
+		FlowSharedInformerFactory:  flowInformerFactory,
+		Config:                     cfg,
+		WorkerNum:                  uint32(workers),
+		MaxRequeueNum:              10, // Default value
 	}
 
 	// Webhook setup
@@ -112,9 +112,9 @@ func main() {
 		EnabledAdmission: enabledAdmission,
 	}
 	admissionServiceConfig := &router.AdmissionServiceConfig{
-		KubeClient:    kubeClient,
-		VolcanoClient: flowClient,
-		ConfigData:    nil, // Can be populated if needed
+		KubeClient:     kubeClient,
+		WorkflowClient: flowClient,
+		ConfigData:     nil, // Can be populated if needed
 	}
 
 	err = router.ForEachAdmission(webhookConfig, func(service *router.AdmissionService) error {
@@ -144,7 +144,7 @@ func main() {
 	defer close(stopCh)
 
 	kubeInformerFactory.Start(stopCh)
-	upstreamInformerFactory.Start(stopCh)
+	batchInformerFactory.Start(stopCh)
 	flowInformerFactory.Start(stopCh)
 
 	// Start Webhook Server if certs are provided

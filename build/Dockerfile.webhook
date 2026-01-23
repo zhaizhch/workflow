@@ -1,4 +1,4 @@
-# Copyright 2026 The Volcano Authors.
+# Copyright 2026 zhaizhicheng.
 
 FROM golang:1.25.0 AS builder
 

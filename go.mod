@@ -13,7 +13,13 @@ require (
 	volcano.sh/apis v1.13.0
 )
 
-require github.com/sirupsen/logrus v1.9.3 // indirect
+require (
+	github.com/sirupsen/logrus v1.9.3 // indirect
+	golang.org/x/mod v0.32.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
+	k8s.io/code-generator v0.35.0 // indirect
+	k8s.io/gengo/v2 v2.0.0-20250922181213-ec3ebc5fd46b // indirect
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

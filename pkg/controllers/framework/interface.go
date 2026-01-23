@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,23 +24,23 @@ import (
 
 	flowclientset "github.com/workflow.sh/work-flow/pkg/client/clientset/versioned"
 	flowinformer "github.com/workflow.sh/work-flow/pkg/client/informers/externalversions"
-	upstreamclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	upstreaminformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	batchclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 )
 
 // ControllerOption is the main context object for the controllers.
 type ControllerOption struct {
-	KubeClient                kubernetes.Interface
-	VolcanoClient             upstreamclientset.Interface
-	FlowClient                flowclientset.Interface
-	DynamicClient             dynamic.Interface
-	SharedInformerFactory     informers.SharedInformerFactory
-	VCSharedInformerFactory   upstreaminformer.SharedInformerFactory
-	FlowSharedInformerFactory flowinformer.SharedInformerFactory
-	SchedulerNames            []string
-	WorkerNum                 uint32
-	CronJobWorkerNum          uint32
-	MaxRequeueNum             int
+	KubeClient                 kubernetes.Interface
+	BatchClient                batchclientset.Interface
+	FlowClient                 flowclientset.Interface
+	DynamicClient              dynamic.Interface
+	SharedInformerFactory      informers.SharedInformerFactory
+	BatchSharedInformerFactory batchinformer.SharedInformerFactory
+	FlowSharedInformerFactory  flowinformer.SharedInformerFactory
+	SchedulerNames             []string
+	WorkerNum                  uint32
+	CronJobWorkerNum           uint32
+	MaxRequeueNum              int
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32

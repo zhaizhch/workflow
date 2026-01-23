@@ -9,4 +9,5 @@ import (
 type Workload interface {
 	GetJobStatus(job *unstructured.Unstructured) v1alpha1flow.JobStatus
 	GetGVR() []schema.GroupVersionResource
+	GetPodLabels(job *unstructured.Unstructured) map[string]string
 }

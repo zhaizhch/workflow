@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import (
 	flowinformer "github.com/workflow.sh/work-flow/pkg/client/informers/externalversions"
 	flowinformerV1alpha1 "github.com/workflow.sh/work-flow/pkg/client/informers/externalversions/flow/v1alpha1"
 	flowlister "github.com/workflow.sh/work-flow/pkg/client/listers/flow/v1alpha1"
-	upstreamclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	batchclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 
 	"github.com/workflow.sh/work-flow/pkg/controllers/apis"
 	"github.com/workflow.sh/work-flow/pkg/controllers/framework"
@@ -53,28 +53,28 @@ func init() {
 // workflowcontroller the Workflow workflowcontroller type.
 type workflowcontroller struct {
 	kubeClient    kubernetes.Interface
-	vcClient      upstreamclientset.Interface
+	batchClient   batchclientset.Interface
 	flowClient    flowclientset.Interface
 	dynamicClient dynamic.Interface
 
 	//informer
-	jobFlowInformer     flowinformerV1alpha1.WorkflowInformer
-	jobTemplateInformer flowinformerV1alpha1.WorkTemplateInformer
+	workflowInformer     flowinformerV1alpha1.WorkflowInformer
+	workTemplateInformer flowinformerV1alpha1.WorkTemplateInformer
 
 	flowInformerFactory    flowinformer.SharedInformerFactory
 	dynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
 
-	//jobFlowLister
-	jobFlowLister flowlister.WorkflowLister
-	jobFlowSynced cache.InformerSynced
+	//lister
+	workflowLister flowlister.WorkflowLister
+	workflowSynced cache.InformerSynced
 
-	//jobTemplateLister
-	jobTemplateLister flowlister.WorkTemplateLister
-	jobTemplateSynced cache.InformerSynced
+	//workTemplateLister
+	workTemplateLister flowlister.WorkTemplateLister
+	workTemplateSynced cache.InformerSynced
 
 	genericJobSynced []cache.InformerSynced
 
-	// Workflow Event recorder
+	// record events
 	recorder record.EventRecorder
 
 	queue           workqueue.TypedRateLimitingInterface[apis.FlowRequest]
@@ -86,186 +86,166 @@ type workflowcontroller struct {
 	Config        *rest.Config
 }
 
-func (jf *workflowcontroller) Name() string {
+func (wc *workflowcontroller) Name() string {
 	return "workflow-controller"
 }
 
-func (jf *workflowcontroller) Initialize(opt *framework.ControllerOption) error {
-	jf.kubeClient = opt.KubeClient
+func (wc *workflowcontroller) Initialize(opt *framework.ControllerOption) error {
+	wc.kubeClient = opt.KubeClient
 	workload.SetClient(opt.KubeClient)
-	jf.Config = opt.Config
-	jf.vcClient = opt.VolcanoClient
-	jf.flowClient = opt.FlowClient
-	jf.dynamicClient = opt.DynamicClient
+	wc.Config = opt.Config
+	wc.batchClient = opt.BatchClient
+	wc.flowClient = opt.FlowClient
+	wc.dynamicClient = opt.DynamicClient
 
-	if jf.dynamicClient == nil && jf.Config != nil {
-		dynamicClient, err := dynamic.NewForConfig(jf.Config)
+	if wc.dynamicClient == nil && wc.Config != nil {
+		dynamicClient, err := dynamic.NewForConfig(wc.Config)
 		if err != nil {
 			return err
 		}
-		jf.dynamicClient = dynamicClient
+		wc.dynamicClient = dynamicClient
 	}
 
-	jf.flowInformerFactory = opt.FlowSharedInformerFactory
+	wc.flowInformerFactory = opt.FlowSharedInformerFactory
 
-	jf.jobFlowInformer = jf.flowInformerFactory.Flow().V1alpha1().Workflows()
-	jf.jobFlowSynced = jf.jobFlowInformer.Informer().HasSynced
-	jf.jobFlowLister = jf.jobFlowInformer.Lister()
-	jf.jobFlowInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    jf.addWorkflow,
-		UpdateFunc: jf.updateWorkflow,
+	wc.workflowInformer = wc.flowInformerFactory.Flow().V1alpha1().Workflows()
+	wc.workflowSynced = wc.workflowInformer.Informer().HasSynced
+	wc.workflowLister = wc.workflowInformer.Lister()
+	wc.workflowInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    wc.addWorkflow,
+		UpdateFunc: wc.updateWorkflow,
 	})
 
-	jf.jobTemplateInformer = jf.flowInformerFactory.Flow().V1alpha1().WorkTemplates()
-	jf.jobTemplateSynced = jf.jobTemplateInformer.Informer().HasSynced
-	jf.jobTemplateLister = jf.jobTemplateInformer.Lister()
+	wc.workTemplateInformer = wc.flowInformerFactory.Flow().V1alpha1().WorkTemplates()
+	wc.workTemplateSynced = wc.workTemplateInformer.Informer().HasSynced
+	wc.workTemplateLister = wc.workTemplateInformer.Lister()
 
 	// Initialize dynamic informer factory
-	jf.dynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(jf.dynamicClient, 0)
+	wc.dynamicInformerFactory = dynamicinformer.NewDynamicSharedInformerFactory(wc.dynamicClient, 0)
 
 	// Register informers for all supported workloads
 	for _, wl := range workload.GetAllWorkloads() {
 		for _, gvr := range wl.GetGVR() {
-			informer := jf.dynamicInformerFactory.ForResource(gvr)
+			informer := wc.dynamicInformerFactory.ForResource(gvr)
 			informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-				UpdateFunc: jf.updateGenericJob,
+				UpdateFunc: wc.updateGenericJob,
 			})
-			jf.genericJobSynced = append(jf.genericJobSynced, informer.Informer().HasSynced)
+			wc.genericJobSynced = append(wc.genericJobSynced, informer.Informer().HasSynced)
 		}
 	}
 
-	jf.maxRequeueNum = opt.MaxRequeueNum
-	if jf.maxRequeueNum < 0 {
-		jf.maxRequeueNum = -1
+	wc.maxRequeueNum = opt.MaxRequeueNum
+	if wc.maxRequeueNum < 0 {
+		wc.maxRequeueNum = -1
 	}
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: jf.kubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: wc.kubeClient.CoreV1().Events("")})
 
-	jf.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
-	jf.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
+	wc.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "workflow-controller"})
+	wc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
 
-	jf.enqueueWorkflow = jf.enqueue
+	wc.enqueueWorkflow = wc.enqueue
 
-	jf.syncHandler = jf.handleWorkflow
+	wc.syncHandler = wc.handleWorkflow
 
-	workflowstate.SyncWorkflow = jf.syncWorkflow
+	workflowstate.SyncWorkflow = wc.syncWorkflow
 	return nil
 }
 
-func (jf *workflowcontroller) Run(stopCh <-chan struct{}) {
-	defer jf.queue.ShutDown()
+func (wc *workflowcontroller) Run(stopCh <-chan struct{}) {
+	defer wc.queue.ShutDown()
 
-	jf.flowInformerFactory.Start(stopCh)
-	jf.dynamicInformerFactory.Start(stopCh)
+	wc.flowInformerFactory.Start(stopCh)
+	wc.dynamicInformerFactory.Start(stopCh)
 
-	for informerType, ok := range jf.flowInformerFactory.WaitForCacheSync(stopCh) {
+	for informerType, ok := range wc.flowInformerFactory.WaitForCacheSync(stopCh) {
 		if !ok {
 			klog.Errorf("caches failed to sync: %v", informerType)
 			return
 		}
 	}
 
-	if !cache.WaitForCacheSync(stopCh, jf.genericJobSynced...) {
+	if !cache.WaitForCacheSync(stopCh, wc.genericJobSynced...) {
 		klog.Errorf("generic job caches failed to sync")
 		return
 	}
 
-	for informerType, ok := range jf.dynamicInformerFactory.WaitForCacheSync(stopCh) {
+	for informerType, ok := range wc.dynamicInformerFactory.WaitForCacheSync(stopCh) {
 		if !ok {
-			klog.Errorf("dynamic dynamic caches failed to sync: %v", informerType)
+			klog.Errorf("dynamic caches failed to sync: %v", informerType)
 			return
 		}
 	}
 
-	go wait.Until(jf.worker, time.Second, stopCh)
+	go wait.Until(wc.worker, time.Second, stopCh)
 
 	klog.Infof("WorkflowController is running ...... ")
 
 	<-stopCh
 }
 
-func (jf *workflowcontroller) worker() {
-	for jf.processNextWorkItem() {
+func (wc *workflowcontroller) worker() {
+	for wc.processNextWorkItem() {
 	}
 }
 
-func (jf *workflowcontroller) processNextWorkItem() bool {
-	req, shutdown := jf.queue.Get()
+func (wc *workflowcontroller) processNextWorkItem() bool {
+	req, shutdown := wc.queue.Get()
 	if shutdown {
-		// Stop working
 		return false
 	}
 
-	// We call Done here so the workqueue knows we have finished
-	// processing this item. We also must remember to call Forget if we
-	// do not want this work item being re-queued. For example, we do
-	// not call Forget if a transient error occurs, instead the item is
-	// put back on the workqueue and attempted again after a back-off
-	// period.
-	defer jf.queue.Done(req)
+	defer wc.queue.Done(req)
 
-	err := jf.syncHandler(&req)
-	jf.handleWorkflowErr(err, req)
+	err := wc.syncHandler(&req)
+	wc.handleWorkflowErr(err, req)
 
 	return true
 }
 
-func (jf *workflowcontroller) handleWorkflow(req *apis.FlowRequest) error {
-	startTime := time.Now()
-	defer func() {
-		klog.V(4).Infof("Finished syncing workflow %s (%v).", req.WorkflowName, time.Since(startTime))
-	}()
-
-	workflow, err := jf.jobFlowLister.Workflows(req.Namespace).Get(req.WorkflowName)
+func (wc *workflowcontroller) handleWorkflow(req *apis.FlowRequest) error {
+	workflow, err := wc.workflowLister.Workflows(req.Namespace).Get(req.WorkflowName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.V(4).Infof("Workflow %s has been deleted.", req.WorkflowName)
 			return nil
 		}
-
-		return fmt.Errorf("get workflow %s failed for %v", req.WorkflowName, err)
+		return fmt.Errorf("failed to get workflow %s: %v", req.WorkflowName, err)
 	}
 
-	jobFlowState := workflowstate.NewState(workflow)
-	if jobFlowState == nil {
-		return fmt.Errorf("workflow %s state %s is invalid", workflow.Name, workflow.Status.State)
+	wfState := workflowstate.NewState(workflow)
+	if wfState == nil {
+		return fmt.Errorf("workflow %s state %v is invalid", workflow.Name, workflow.Status.State)
 	}
 
-	klog.V(4).Infof("Begin execute %s action for workflow %s", req.Action, req.WorkflowName)
-	if err := jobFlowState.Execute(req.Action); err != nil {
-		return fmt.Errorf("sync workflow %s failed for %v, event is %v, action is %s",
-			req.WorkflowName, err, req.Event, req.Action)
+	if err := wfState.Execute(req.Action); err != nil {
+		return fmt.Errorf("failed to execute %s for workflow %s: %v", req.Action, req.WorkflowName, err)
 	}
 
 	return nil
 }
 
-func (jf *workflowcontroller) handleWorkflowErr(err error, req apis.FlowRequest) {
+func (wc *workflowcontroller) handleWorkflowErr(err error, req apis.FlowRequest) {
 	if err == nil {
-		jf.queue.Forget(req)
+		wc.queue.Forget(req)
 		return
 	}
 
-	if jf.maxRequeueNum == -1 || jf.queue.NumRequeues(req) < jf.maxRequeueNum {
-		klog.V(4).Infof("Error syncing jobFlow request %v for %v.", req, err)
-		jf.queue.AddRateLimited(req)
+	if wc.maxRequeueNum == -1 || wc.queue.NumRequeues(req) < wc.maxRequeueNum {
+		wc.queue.AddRateLimited(req)
 		return
 	}
 
-	jf.recordEventsForWorkflow(req.Namespace, req.WorkflowName, v1.EventTypeWarning, string(req.Action),
-		fmt.Sprintf("%v Workflow failed for %v", req.Action, err))
-	klog.V(4).Infof("Dropping Workflow request %v out of the queue for %v.", req, err)
-	jf.queue.Forget(req)
+	wc.recordEventsForWorkflow(req.Namespace, req.WorkflowName, v1.EventTypeWarning, string(req.Action),
+		fmt.Sprintf("%v failed for %v", req.Action, err))
+	wc.queue.Forget(req)
 }
 
-func (jf *workflowcontroller) recordEventsForWorkflow(namespace, name, eventType, reason, message string) {
-	jobFlow, err := jf.jobFlowLister.Workflows(namespace).Get(name)
+func (wc *workflowcontroller) recordEventsForWorkflow(namespace, name, eventType, reason, message string) {
+	workflow, err := wc.workflowLister.Workflows(namespace).Get(name)
 	if err != nil {
-		klog.Errorf("Get Workflow %s failed for %v.", name, err)
 		return
 	}
-
-	jf.recorder.Event(jobFlow, eventType, reason, message)
+	wc.recorder.Event(workflow, eventType, reason, message)
 }

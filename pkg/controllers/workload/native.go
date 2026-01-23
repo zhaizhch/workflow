@@ -68,6 +68,14 @@ func (n *nativeWorkload) GetGVR() []schema.GroupVersionResource {
 	}
 }
 
+func (n *nativeWorkload) GetPodLabels(job *unstructured.Unstructured) map[string]string {
+	matchLabels, found, _ := unstructured.NestedStringMap(job.Object, "spec", "selector", "matchLabels")
+	if found {
+		return matchLabels
+	}
+	return nil
+}
+
 func init() {
 	Register(&nativeWorkload{})
 }

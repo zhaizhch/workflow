@@ -1,6 +1,18 @@
 #!/bin/sh
 
-# Based on volcano/hack/gen-admission-secret.sh
+# Copyright 2026 zhaizhicheng.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 set -e
 
@@ -8,13 +20,8 @@ usage() {
     cat <<EOF
 Generate certificate suitable for use with an admission webhook service.
 
-This script uses k8s' CertificateSigningRequest API to a generate a
-certificate signed by k8s CA suitable for use with admission webhook
-services. This requires permissions to create and approve CSRs. See
-https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster for
-detailed explanation and additional instructions.
-
-The server key/cert k8s CA cert are stored in a k8s secret.
+This script generates a self-signed certificate and stores it in a Kubernetes secret.
+It also patches the specified ValidatingWebhookConfiguration with the CA bundle.
 
 usage: ${0} [OPTIONS]
 
@@ -57,14 +64,11 @@ if [ ! -x "$(command -v openssl)" ]; then
     exit 1
 fi
 
-CSR_NAME=${SERVICE}.${NAMESPACE}.svc
-echo "creating certs in tmpdir ${TMP_DIR} "
+TMP_DIR=$(mktemp -d)
+echo "creating certs in tmpdir ${TMP_DIR}"
 
-# Create a self-signed CA
-openssl req -nodes -new -x509 -keyout ca.key -out ca.crt -subj "/CN=${SERVICE}.${NAMESPACE}.svc"
-
-# Create a server cert
-cat > server.conf <<EOF
+# Create a CSR config
+cat > ${TMP_DIR}/server.conf <<EOF
 [req]
 req_extensions = v3_req
 distinguished_name = req_distinguished_name
@@ -80,21 +84,40 @@ DNS.2 = ${SERVICE}.${NAMESPACE}
 DNS.3 = ${SERVICE}.${NAMESPACE}.svc
 EOF
 
-openssl req -nodes -new -keyout tls.key -out tls.csr -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -config server.conf
+# Create a self-signed certificate and key
+# We use a single cert that acts as its own CA to simplify things
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -config ${TMP_DIR}/server.conf \
+    -extensions v3_req \
+    -keyout ${TMP_DIR}/tls.key \
+    -out ${TMP_DIR}/tls.crt \
+    -subj "/CN=${SERVICE}.${NAMESPACE}.svc"
 
-# Sign the server cert
-openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.crt -extensions v3_req -extfile server.conf
+# For self-signed certs, the CA cert is the same as the server cert
+cp ${TMP_DIR}/tls.crt ${TMP_DIR}/ca.crt
 
 # Create the secret with CA cert and server cert/key
+# We delete first to ensure it's updated if it exists
+kubectl delete secret ${SECRET} -n ${NAMESPACE} 2>/dev/null || true
+
 kubectl create secret generic ${SECRET} \
-    --from-file=tls.key=tls.key \
-    --from-file=tls.crt=tls.crt \
-    --from-file=ca.crt=ca.crt \
-    -n ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+    --from-file=tls.key=${TMP_DIR}/tls.key \
+    --from-file=tls.crt=${TMP_DIR}/tls.crt \
+    --from-file=ca.crt=${TMP_DIR}/ca.crt \
+    -n ${NAMESPACE}
+
+# Base64 encode the CA cert for the webhook configuration
+CA_BUNDLE=$(cat ${TMP_DIR}/ca.crt | base64 | tr -d '\n')
 
 # Patch the webhook configuration with the CA bundle
-CA_BUNDLE=$(cat ca.crt | base64 | tr -d '\n')
+# Note: We use the hardcoded name 'work-flow-admission' which is defined in the deployment YAML
 kubectl patch validatingwebhookconfiguration work-flow-admission \
     --type='json' -p="[{'op': 'replace', 'path': '/webhooks/0/clientConfig/caBundle', 'value':'${CA_BUNDLE}'}]"
 
 echo "Secret ${SECRET} created and webhook patched."
+
+# Copy certs to the current directory so the calling process can use them
+cp ${TMP_DIR}/tls.crt .
+cp ${TMP_DIR}/tls.key .
+
+rm -rf ${TMP_DIR}

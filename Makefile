@@ -1,4 +1,4 @@
-# Copyright 2026 The Volcano Authors.
+# Copyright 2026 zhaizhicheng.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ init:
 	mkdir -p ${BIN_DIR}
 
 generate:
-	./hack/update-gencode.sh
+	GOPROXY=https://proxy.golang.org,direct ./hack/update-gencode.sh
 
 # Generate CRD manifests using controller-gen
 manifests: controller-gen
@@ -84,4 +84,12 @@ undeploy-example:
 	kubectl delete -f examples/workflows.yaml
 	kubectl delete -f examples/worktemplates.yaml
 
-.PHONY: all build images clean generate test test-coverage manifests controller-gen install-crds uninstall-crds images-push images-build-controller images-build-admission
+deploy-advanced-example:
+	kubectl apply -f examples/advanced-templates.yaml
+	kubectl apply -f examples/advanced.yaml
+
+undeploy-advanced-example:
+	kubectl delete -f examples/advanced.yaml
+	kubectl delete -f examples/advanced-templates.yaml
+
+.PHONY: all build images clean generate test test-coverage manifests controller-gen install-crds uninstall-crds images-push images-build-controller images-build-admission deploy-example undeploy-example deploy-advanced-example undeploy-advanced-example

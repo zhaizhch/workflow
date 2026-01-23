@@ -1,0 +1,106 @@
+apiVersion: flow.workflow.sh/v1alpha1
+kind: Workflow
+metadata:
+  name: premium-advanced-demo
+  namespace: zzc-system
+spec:
+  # 全局调度配置，确保整个工作流任务在特定调度器下运行
+  schedulerName: volcano
+  plugins:
+    env: []
+    svc: []
+  jobRetainPolicy: delete
+  flows:
+    # 步骤 1: 基础设施初始化 (Native Deployment)
+    - name: infra-ready
+    
+    # 步骤 2: 数据预处理 (Sequential For)
+    # 依次创建 3 个任务，前一个进入 Running 状态后再启动下一个
+    - name: data-preprocessing
+      for:
+        replicas: 3
+        dependsOn:
+          # 副本间依赖：只有前一个副本 Running 了才启动下一个
+          probe:
+            taskStatusList:
+              - taskName: data-preprocessing
+                phase: Running
+      dependsOn:
+        # 步骤间依赖：infra-ready 进入 Running 后启动第一个副本
+        probe:
+          taskStatusList:
+            - taskName: infra-ready
+              phase: Running
+    
+    # 步骤 3: GPU 训练 (Parallel For)
+    # 并行创建 2 个任务，每个任务独立运行
+    - name: gpu-training-task
+      for:
+        replicas: 2
+        dependsOn:
+          # 副本间依赖：前一个副本 Running 了才启动下一个
+          probe:
+            taskStatusList:
+              - taskName: gpu-training-task
+                phase: Running
+      dependsOn:
+        # 步骤间依赖：data-preprocessing 进入 Running 后启动第一个副本
+        probe:
+          taskStatusList:
+            - taskName: data-preprocessing
+              phase: Running
+
+    # 步骤 5: 逻辑组合测试 ((A AND B) OR C)
+    - name: logic-test-task
+      dependsOn:
+        orGroups:
+          # 逻辑分支 1: data-preprocessing 且 infra-ready 都完成
+          - targets: 
+              - data-preprocessing
+              - infra-ready
+          # 逻辑分支 2: probe-task 完成 (OR 关系)
+          - targets:
+              - probe-task
+
+    # 步骤 4: 独立功能测试 (Parallel Splits)
+
+    # 4.1 测试 Retry 机制 (预期会失败重试)
+    - name: failed-task
+      retry:
+        maxRetries: 3
+        interval: "5s"
+      dependsOn:
+        targets:
+          - gpu-training-task
+
+    # 4.2 测试 Patch 机制
+    - name: model-validation
+      patch:
+        # 通过 Patch 动态注入特定的验证配置
+        metadata:
+          annotations:
+            validation-quality: "high"
+        spec:
+          jobSpec:
+            paddleReplicaSpecs:
+              Worker:
+                replicas: 2
+      dependsOn:
+        targets:
+          - gpu-training-task
+
+    # 4.3 测试 Probe 机制
+    - name: probe-task
+      dependsOn:
+        probe:
+          # 进行三重校验：上游状态、服务可用性、TCP 连通性
+          taskStatusList:
+            - taskName: gpu-training-task
+              phase: Running
+          httpGetList:
+            - taskName: gpu-training-task
+              port: 8080
+              path: "/healthz"
+          tcpSocketList:
+            - taskName: gpu-training-task
+              port: 2222

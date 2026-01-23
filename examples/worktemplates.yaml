@@ -19,7 +19,7 @@ spec:
             containers:
               - command:
                   - sleep
-                  - "60"
+                  - "10"
                 image: busybox
                 name: task-1
             restartPolicy: OnFailure
@@ -45,7 +45,7 @@ spec:
             containers:
               - name: pytorch
                 image: busybox
-                command: ["sleep", "60"]
+                command: ["sleep", "10"]
             restartPolicy: OnFailure
       Worker:
         replicas: 1
@@ -56,7 +56,7 @@ spec:
             containers:
               - name: pytorch
                 image: busybox
-                command: ["sleep", "60"]
+                command: ["sleep", "10"]
             restartPolicy: OnFailure
 ---
 apiVersion: flow.workflow.sh/v1alpha1
@@ -80,7 +80,7 @@ spec:
              containers:
              - image: busybox
                name: mpi-launcher
-               command: ["sleep", "60"]
+               command: ["sleep", "10"]
       Worker:
         replicas: 1
         template:
@@ -88,7 +88,7 @@ spec:
             containers:
             - image: busybox
               name: mpi-worker
-              command: ["sleep", "60"]
+              command: ["sleep", "10"]
 ---
 apiVersion: flow.workflow.sh/v1alpha1
 kind: WorkTemplate
@@ -111,7 +111,7 @@ spec:
             containers:
               - name: paddle
                 image: busybox
-                command: ["sleep", "60"]
+                command: ["sleep", "10"]
       Worker:
         replicas: 1
         restartPolicy: OnFailure
@@ -120,7 +120,7 @@ spec:
             containers:
               - name: paddle
                 image: busybox
-                command: ["sleep", "60"]
+                command: ["sleep", "10"]
 ---
 apiVersion: flow.workflow.sh/v1alpha1
 kind: WorkTemplate
@@ -145,4 +145,4 @@ spec:
         containers:
         - name: nginx
           image: busybox
-          command: ["sleep", "60"]
+          command: ["sleep", "10"]

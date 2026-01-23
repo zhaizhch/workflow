@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ type AdmitFunc func(admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 type AdmissionServiceConfig struct {
 	SchedulerNames []string
 	KubeClient     kubernetes.Interface
-	VolcanoClient  versioned.Interface
+	WorkflowClient versioned.Interface
 	Recorder       record.EventRecorder
 	ConfigData     *config.AdmissionConfiguration
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2026 zhaizhicheng.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,9 +32,9 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	upstreamclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	upstreaminformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
+	batchclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	batchV1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 
 	flowclientset "github.com/workflow.sh/work-flow/pkg/client/clientset/versioned"
 	versionedscheme "github.com/workflow.sh/work-flow/pkg/client/clientset/versioned/scheme"
@@ -54,23 +54,23 @@ func init() {
 
 // worktemplatecontroller the WorkTemplate worktemplatecontroller type.
 type worktemplatecontroller struct {
-	kubeClient kubernetes.Interface
-	vcClient   upstreamclientset.Interface
-	flowClient flowclientset.Interface
+	kubeClient  kubernetes.Interface
+	batchClient batchclientset.Interface
+	flowClient  flowclientset.Interface
 
 	//informer
-	jobTemplateInformer flowinformerV1alpha1.WorkTemplateInformer
-	jobInformer         batchinformer.JobInformer
+	workTemplateInformer flowinformerV1alpha1.WorkTemplateInformer
+	jobInformer          batchV1alpha1.JobInformer
 
 	dynamicClient dynamic.Interface
 
 	//InformerFactory
-	vcInformerFactory   upstreaminformer.SharedInformerFactory
-	flowInformerFactory flowinformer.SharedInformerFactory
+	batchInformerFactory batchinformer.SharedInformerFactory
+	flowInformerFactory  flowinformer.SharedInformerFactory
 
-	//jobTemplateLister
-	jobTemplateLister flowlister.WorkTemplateLister
-	jobTemplateSynced cache.InformerSynced
+	//workTemplateLister
+	workTemplateLister flowlister.WorkTemplateLister
+	workTemplateSynced cache.InformerSynced
 
 	//jobLister
 	jobLister batchlister.JobLister
@@ -95,7 +95,7 @@ func (jt *worktemplatecontroller) Name() string {
 
 func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) error {
 	jt.kubeClient = opt.KubeClient
-	jt.vcClient = opt.VolcanoClient
+	jt.batchClient = opt.BatchClient
 	jt.flowClient = opt.FlowClient
 	jt.Config = opt.Config
 	jt.dynamicClient = opt.DynamicClient
@@ -108,17 +108,17 @@ func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) er
 		jt.dynamicClient = dynamicClient
 	}
 
-	jt.vcInformerFactory = opt.VCSharedInformerFactory
+	jt.batchInformerFactory = opt.BatchSharedInformerFactory
 	jt.flowInformerFactory = opt.FlowSharedInformerFactory
 
-	jt.jobTemplateInformer = jt.flowInformerFactory.Flow().V1alpha1().WorkTemplates()
-	jt.jobTemplateSynced = jt.jobTemplateInformer.Informer().HasSynced
-	jt.jobTemplateLister = jt.jobTemplateInformer.Lister()
-	jt.jobTemplateInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	jt.workTemplateInformer = jt.flowInformerFactory.Flow().V1alpha1().WorkTemplates()
+	jt.workTemplateSynced = jt.workTemplateInformer.Informer().HasSynced
+	jt.workTemplateLister = jt.workTemplateInformer.Lister()
+	jt.workTemplateInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: jt.addWorkTemplate,
 	})
 
-	jt.jobInformer = jt.vcInformerFactory.Batch().V1alpha1().Jobs()
+	jt.jobInformer = jt.batchInformerFactory.Batch().V1alpha1().Jobs()
 	jt.jobSynced = jt.jobInformer.Informer().HasSynced
 	jt.jobLister = jt.jobInformer.Lister()
 	jt.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -134,7 +134,7 @@ func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) er
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: jt.kubeClient.CoreV1().Events("")})
 
-	jt.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
+	jt.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "workflow-controller"})
 	jt.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
 
 	jt.enqueueWorkTemplate = jt.enqueue
@@ -147,10 +147,10 @@ func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) er
 func (jt *worktemplatecontroller) Run(stopCh <-chan struct{}) {
 	defer jt.queue.ShutDown()
 
-	jt.vcInformerFactory.Start(stopCh)
+	jt.batchInformerFactory.Start(stopCh)
 	jt.flowInformerFactory.Start(stopCh)
 
-	for informerType, ok := range jt.vcInformerFactory.WaitForCacheSync(stopCh) {
+	for informerType, ok := range jt.batchInformerFactory.WaitForCacheSync(stopCh) {
 		if !ok {
 			klog.Errorf("caches failed to sync: %v", informerType)
 			return
@@ -203,7 +203,7 @@ func (jt *worktemplatecontroller) handleWorkTemplate(req *apis.FlowRequest) erro
 		klog.V(4).Infof("Finished syncing jobTemplate %s (%v).", req.WorkTemplateName, time.Since(startTime))
 	}()
 
-	jobTemplate, err := jt.jobTemplateLister.WorkTemplates(req.Namespace).Get(req.WorkTemplateName)
+	workTemplate, err := jt.workTemplateLister.WorkTemplates(req.Namespace).Get(req.WorkTemplateName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(4).Infof("WorkTemplate %s has been deleted.", req.WorkTemplateName)
@@ -213,9 +213,9 @@ func (jt *worktemplatecontroller) handleWorkTemplate(req *apis.FlowRequest) erro
 		return fmt.Errorf("get jobTemplate %s failed for %v", req.WorkflowName, err)
 	}
 
-	klog.V(4).Infof("Begin syncWorkTemplate for jobTemplate %s", req.WorkflowName)
-	if err := jt.syncWorkTemplate(jobTemplate); err != nil {
-		return fmt.Errorf("sync jobTemplate %s failed for %v, event is %v, action is %s",
+	klog.V(4).Infof("Begin syncWorkTemplate for workTemplate %s", req.WorkflowName)
+	if err := jt.syncWorkTemplate(workTemplate); err != nil {
+		return fmt.Errorf("sync workTemplate %s failed for %v, event is %v, action is %s",
 			req.WorkflowName, err, req.Event, req.Action)
 	}
 
@@ -241,11 +241,11 @@ func (jt *worktemplatecontroller) handleWorkTemplateErr(err error, req apis.Flow
 }
 
 func (jt *worktemplatecontroller) recordEventsForWorkTemplate(namespace, name, eventType, reason, message string) {
-	jobTemplate, err := jt.jobTemplateLister.WorkTemplates(namespace).Get(name)
+	workTemplate, err := jt.workTemplateLister.WorkTemplates(namespace).Get(name)
 	if err != nil {
 		klog.Errorf("Get WorkTemplate %s failed for %v.", name, err)
 		return
 	}
 
-	jt.recorder.Event(jobTemplate, eventType, reason, message)
+	jt.recorder.Event(workTemplate, eventType, reason, message)
 }

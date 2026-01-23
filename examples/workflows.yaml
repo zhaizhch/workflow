@@ -1,7 +1,7 @@
 apiVersion: flow.workflow.sh/v1alpha1
 kind: Workflow
 metadata:
-  name: sample-workflow
+  name: sample-dag-workflow
   namespace: zzc-system
 spec:
   jobRetainPolicy: delete
@@ -14,13 +14,13 @@ spec:
     - name: paddlejob-template
       dependsOn:
         targets:
-          - pytorchjob-template
+          - vcjob-template
     - name: mpijob-template
       dependsOn:
         targets:
           - vcjob-template
           - paddlejob-template
-    - name: deploy-template
-      dependsOn:
-        targets:
-          - mpijob-template
+    # - name: deploy-template
+    #   dependsOn:
+    #     targets:
+    #       - mpijob-template

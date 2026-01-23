@@ -7,9 +7,9 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
-type volcanoWorkload struct{}
+type batchWorkload struct{}
 
-func (v *volcanoWorkload) GetJobStatus(job *unstructured.Unstructured) v1alpha1flow.JobStatus {
+func (v *batchWorkload) GetJobStatus(job *unstructured.Unstructured) v1alpha1flow.JobStatus {
 	jobStatus := v1alpha1flow.JobStatus{
 		Name:           job.GetName(),
 		StartTimestamp: job.GetCreationTimestamp(),
@@ -26,12 +26,18 @@ func (v *volcanoWorkload) GetJobStatus(job *unstructured.Unstructured) v1alpha1f
 	return jobStatus
 }
 
-func (v *volcanoWorkload) GetGVR() []schema.GroupVersionResource {
+func (v *batchWorkload) GetGVR() []schema.GroupVersionResource {
 	return []schema.GroupVersionResource{
 		{Group: "batch.volcano.sh", Version: "v1alpha1", Resource: "jobs"},
 	}
 }
 
+func (v *batchWorkload) GetPodLabels(job *unstructured.Unstructured) map[string]string {
+	return map[string]string{
+		"volcano.sh/job-name": job.GetName(),
+	}
+}
+
 func init() {
-	Register(&volcanoWorkload{})
+	Register(&batchWorkload{})
 }

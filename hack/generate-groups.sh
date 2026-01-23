@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -x
+
 
 # Copyright 2017 The Kubernetes Authors.
 #
@@ -72,7 +74,7 @@ done
 
 if [ "${GENS}" = "all" ] || grep -qw "deepcopy" <<<"${GENS}"; then
   echo "Generating deepcopy funcs"
-  "${gobin}/deepcopy-gen" --bounding-dirs "$(codegen::join , "${FQ_APIS[@]}")" --output-file zz_generated.deepcopy "$@"
+  "${gobin}/deepcopy-gen" --bounding-dirs "$(codegen::join , "${FQ_APIS[@]}")" --output-file zz_generated.deepcopy.go "${FQ_APIS[@]}" "$@"
 fi
 
 MODULE_NAME="${APIS_PKG%/pkg/apis}"
