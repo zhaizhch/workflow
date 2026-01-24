@@ -202,12 +202,13 @@ type State struct {
 	Phase Phase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 }
 
-// +kubebuilder:validation:Enum=retain;delete
+// +kubebuilder:validation:Enum=retain;delete;delete-on-success
 type RetainPolicy string
 
 const (
-	Retain RetainPolicy = "retain"
-	Delete RetainPolicy = "delete"
+	Retain          RetainPolicy = "retain"
+	Delete          RetainPolicy = "delete"
+	DeleteOnSuccess RetainPolicy = "delete-on-success"
 )
 
 // +kubebuilder:validation:Enum=Succeed;Terminating;Failed;Running;Pending

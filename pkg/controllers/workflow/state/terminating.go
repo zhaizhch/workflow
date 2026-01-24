@@ -23,5 +23,9 @@ type terminatingState struct {
 }
 
 func (p *terminatingState) Execute(action v1alpha1.Action) error {
+	switch action {
+	case v1alpha1.SyncWorkflowAction:
+		return SyncWorkflow(p.jobFlow, func(status *v1alpha1.WorkflowStatus, allJobList int) {})
+	}
 	return nil
 }

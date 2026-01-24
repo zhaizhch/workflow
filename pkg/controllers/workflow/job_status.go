@@ -51,10 +51,14 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 	unknownJobs := make([]string, 0)
 	conditions := make(map[string]v1alpha1flow.Condition)
 	jobStatusList := make([]v1alpha1flow.JobStatus, 0)
-	if workflow.Status.JobStatusList != nil {
-		jobStatusList = workflow.Status.JobStatusList
+	// Create a map of existing status for quick lookup
+	existingStatusMap := make(map[string]v1alpha1flow.JobStatus)
+	for _, js := range workflow.Status.JobStatusList {
+		existingStatusMap[js.Name] = js
 	}
 
+	// 1. Process jobs currently in the cluster
+	processedJobs := make(map[string]bool)
 	for _, job := range jobList {
 		wl := workload.GetWorkload(job.GroupVersionKind().Group)
 		if wl == nil {
@@ -82,21 +86,25 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 			StartTimestamp: creationTimestamp,
 		}
 
-		foundExisting := false
-		for i := range jobStatusList {
-			if jobStatusList[i].Name == newJobStatus.Name {
-				foundExisting = true
-				newJobStatus.RestartCount = jobStatusList[i].RestartCount
-				if jobPhase == v1alpha1.Running && jobStatusList[i].State == v1alpha1.Failed {
-					newJobStatus.RestartCount++
-				}
-				newJobStatus.RunningHistories = jobStatusList[i].RunningHistories
-				jobStatusList[i] = newJobStatus
-				break
+		if existing, ok := existingStatusMap[job.GetName()]; ok {
+			newJobStatus.RestartCount = existing.RestartCount
+			newJobStatus.RunningHistories = existing.RunningHistories
+			// If creation timestamp has changed, it's a new job instance (retry)
+			if !creationTimestamp.Equal(&existing.StartTimestamp) && !existing.StartTimestamp.IsZero() {
+				newJobStatus.RestartCount++
+				klog.Infof("Detected new instance for job %s, incrementing RestartCount to %d", job.GetName(), newJobStatus.RestartCount)
 			}
 		}
-		if !foundExisting {
-			jobStatusList = append(jobStatusList, newJobStatus)
+		jobStatusList = append(jobStatusList, newJobStatus)
+		processedJobs[job.GetName()] = true
+	}
+
+	// 2. Keep status for jobs that are currently missing (e.g. being retried/deleted)
+	for name, existing := range existingStatusMap {
+		if !processedJobs[name] {
+			// Job is not in cluster, but we should keep its status and restart count
+			// so that when it's recreated, we can carry over the count.
+			jobStatusList = append(jobStatusList, existing)
 		}
 	}
 

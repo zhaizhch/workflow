@@ -101,7 +101,7 @@ spec:
                                 conn.close()
                     threading.Thread(target=run_http, daemon=True).start()
                     threading.Thread(target=run_tcp, daemon=True).start()
-                    time.sleep(120)
+                    time.sleep(20)
       Worker:
         replicas: 1
         restartPolicy: OnFailure
@@ -111,7 +111,7 @@ spec:
               - name: pytorch
                 image: hub.bjuci.io/dev/python:3.9-slim
                 imagePullPolicy: Always
-                command: ["sleep", "60"]
+                command: ["sleep", "10"]
 ---
 apiVersion: flow.workflow.sh/v1alpha1
 kind: WorkTemplate
@@ -165,7 +165,7 @@ spec:
               - name: fail-container
                 image: busybox
                 command: ["sh", "-c", "echo 'Simulating failure...' && exit 1"]
-            restartPolicy: OnFailure
+            restartPolicy: Never
 ---
 apiVersion: flow.workflow.sh/v1alpha1
 kind: WorkTemplate
