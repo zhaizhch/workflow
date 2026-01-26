@@ -90,6 +90,19 @@ spec:
         app: work-flow-controller
     spec:
       affinity:
+        # Pod anti-affinity to distribute replicas across different nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - work-flow-controller
+                topologyKey: kubernetes.io/hostname
+        # Node affinity to avoid specific nodes
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
@@ -112,6 +125,32 @@ spec:
             - --leader-elect=true
             - --leader-elect-resource-lock=leases
             - --leader-elect-id=workflow-controller
+          # Resource limits and requests for stable performance
+          resources:
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+          # Liveness probe using leader election status
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness probe to check if controller is ready
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -121,7 +160,7 @@ metadata:
   labels:
     app: work-flow-admission
 spec:
-  replicas: 1
+  replicas: 3  # High availability: 3 replicas
   selector:
     matchLabels:
       app: work-flow-admission
@@ -131,6 +170,19 @@ spec:
         app: work-flow-admission
     spec:
       affinity:
+        # Pod anti-affinity to distribute replicas across different nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - work-flow-admission
+                topologyKey: kubernetes.io/hostname
+        # Node affinity to avoid specific nodes
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
@@ -139,7 +191,7 @@ spec:
                 operator: NotIn
                 values:
                 - bjcjgpu001
-      serviceAccountName: work-flow-controller  # Reuse service account if permissions are same
+      serviceAccountName: work-flow-controller
       containers:
         - name: flow-admission
           image: hub.bjuci.io/dev/work-flow-admission:latest
@@ -149,6 +201,34 @@ spec:
             - containerPort: 8443
               name: webhook-server
               protocol: TCP
+          # Resource limits and requests for stable performance
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+          # Liveness probe to restart unhealthy pods
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness probe to control traffic routing
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: admission-certs
               mountPath: /etc/workflow/certs

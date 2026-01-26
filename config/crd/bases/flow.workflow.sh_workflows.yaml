@@ -370,6 +370,27 @@ spec:
                 type: object
               schedulerName:
                 type: string
+              successPolicy:
+                description: |-
+                  SuccessPolicy defines how to determine workflow success
+                  Defaults to All (all flows must succeed)
+                properties:
+                  criticalFlows:
+                    description: |-
+                      CriticalFlows specifies critical flow names
+                      Required when Type=Critical
+                    items:
+                      type: string
+                    type: array
+                  type:
+                    default: All
+                    description: Type defines the success policy type
+                    enum:
+                    - All
+                    - Any
+                    - Critical
+                    type: string
+                type: object
             type: object
           status:
             description: WorkflowStatus defines the observed state of Workflow

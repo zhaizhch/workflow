@@ -28,8 +28,8 @@ type Vertex struct {
 func NewVertex(name string) *Vertex { return &Vertex{Name: name, Edges: []*Vertex{}} }
 
 func LoadVertexs(data map[string][]string) ([]*Vertex, error) {
-	graphMap := make(map[string]*Vertex)
-	output := make([]*Vertex, len(graphMap))
+	graphMap := make(map[string]*Vertex, len(data))
+	output := make([]*Vertex, 0, len(data))
 
 	for name := range data {
 		graphMap[name] = NewVertex(name)
@@ -38,8 +38,13 @@ func LoadVertexs(data map[string][]string) ([]*Vertex, error) {
 	for name, values := range data {
 		graphMap[name].Edges = make([]*Vertex, len(values))
 		for index, value := range values {
+			// Check for self-loop
+			if value == name {
+				return nil, fmt.Errorf("flow '%s' has self-dependency", name)
+			}
+
 			if _, ok := graphMap[value]; !ok {
-				return output, fmt.Errorf("%s: %s", VertexNotDefinedError.Error(), value)
+				return nil, fmt.Errorf("%s: %s", VertexNotDefinedError.Error(), value)
 			}
 			graphMap[name].Edges[index] = graphMap[value]
 		}
@@ -51,29 +56,35 @@ func LoadVertexs(data map[string][]string) ([]*Vertex, error) {
 	return output, nil
 }
 
-// IsDAG solves the problem in O(V+E) time and O(V) space.
+// IsDAG uses three-color DFS to detect cycles in O(V+E) time and O(V) space.
+// Colors: 0=white (unvisited), 1=gray (visiting), 2=black (visited)
 func IsDAG(graph []*Vertex) bool {
+	colors := make(map[*Vertex]int, len(graph))
+
 	for _, vertex := range graph {
-		visited := make(map[*Vertex]struct{})
-		visited[vertex] = struct{}{}
-		if hasCycle(vertex, visited) {
-			return false
+		if colors[vertex] == 0 {
+			if hasCycle(vertex, colors) {
+				return false
+			}
 		}
 	}
 	return true
 }
 
-func hasCycle(vertex *Vertex, visited map[*Vertex]struct{}) bool {
+// hasCycle performs DFS with three-color marking to detect back edges (cycles).
+func hasCycle(vertex *Vertex, colors map[*Vertex]int) bool {
+	colors[vertex] = 1 // Mark as visiting (gray)
+
 	for _, neighbor := range vertex.Edges {
-		if _, ok := visited[neighbor]; !ok {
-			visited[neighbor] = struct{}{}
-			if hasCycle(neighbor, visited) {
-				return true
-			}
-			delete(visited, neighbor)
-		} else {
+		if colors[neighbor] == 1 {
+			// Back edge detected - cycle exists
+			return true
+		}
+		if colors[neighbor] == 0 && hasCycle(neighbor, colors) {
 			return true
 		}
 	}
+
+	colors[vertex] = 2 // Mark as visited (black)
 	return false
 }

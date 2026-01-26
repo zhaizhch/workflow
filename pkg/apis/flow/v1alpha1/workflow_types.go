@@ -33,6 +33,10 @@ type WorkflowSpec struct {
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,3,opt,name=schedulerName"`
 	// +optional
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,4,rep,name=plugins"`
+	// SuccessPolicy defines how to determine workflow success
+	// Defaults to All (all flows must succeed)
+	// +optional
+	SuccessPolicy *SuccessPolicy `json:"successPolicy,omitempty" protobuf:"bytes,5,opt,name=successPolicy"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -97,6 +101,32 @@ const (
 	All DependencyStrategy = "All"
 	Any DependencyStrategy = "Any"
 )
+
+// SuccessPolicyType defines how to determine workflow success
+type SuccessPolicyType string
+
+const (
+	// SuccessPolicyAll requires all flows to succeed
+	SuccessPolicyAll SuccessPolicyType = "All"
+	// SuccessPolicyAny requires at least one leaf flow to succeed
+	SuccessPolicyAny SuccessPolicyType = "Any"
+	// SuccessPolicyCritical requires only critical flows to succeed
+	SuccessPolicyCritical SuccessPolicyType = "Critical"
+)
+
+// +k8s:deepcopy-gen=true
+type SuccessPolicy struct {
+	// Type defines the success policy type
+	// +optional
+	// +kubebuilder:default=All
+	// +kubebuilder:validation:Enum=All;Any;Critical
+	Type SuccessPolicyType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type"`
+
+	// CriticalFlows specifies critical flow names
+	// Required when Type=Critical
+	// +optional
+	CriticalFlows []string `json:"criticalFlows,omitempty" protobuf:"bytes,2,rep,name=criticalFlows"`
+}
 
 // +k8s:deepcopy-gen=true
 // +kubebuilder:pruning:PreserveUnknownFields

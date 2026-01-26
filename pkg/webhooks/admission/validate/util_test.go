@@ -31,7 +31,8 @@ func TestIsDAG(t *testing.T) {
 		{map[string][]string{"1": {"2", "3"}, "2": {"4", "5"}, "3": {}, "4": {}, "5": {}}, true, false},
 		{map[string][]string{"1": {"2", "3", "4"}, "2": {"3"}, "3": {"4"}, "4": {"5"}, "5": {}}, true, false},
 		{map[string][]string{"1": {"2", "3", "4"}, "2": {"3", "5"}, "3": {"5"}, "4": {"3", "5"}, "5": {}}, true, false},
-		{map[string][]string{"1": {"2", "3", "4"}, "2": {"3", "5"}, "3": {"5"}, "4": {"3", "5"}, "5": {"5", "3"}}, false, false},
+		// Changed: self-loop now detected in LoadVertexs, so isErr should be true
+		{map[string][]string{"1": {"2", "3", "4"}, "2": {"3", "5"}, "3": {"5"}, "4": {"3", "5"}, "5": {"5", "3"}}, false, true},
 	}
 
 	for i, test := range tests {

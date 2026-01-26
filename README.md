@@ -10,6 +10,7 @@ Work-Flow is a high-performance, cloud-native workflow engine built on Kubernete
   - **K8s Native**: Support for standard resources like Deployments and custom CRDs.
 
 - **🛠 Advanced Flow Control**:
+  - **SuccessPolicy**: Flexible workflow success criteria (**All**, **Any**, **Critical**). Handle error-recovery and multi-path scenarios gracefully.
   - **Probe**: Dynamic flow control via HTTP, TCP, or task status checks. Supports multi-replica synchronization.
   - **Parallel For**: Concurrent execution of task replicas with index injection.
   - **Retry**: Robust task-level retry policies with backoff.

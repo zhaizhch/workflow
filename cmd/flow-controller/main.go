@@ -154,6 +154,29 @@ func main() {
 		batchInformerFactory.Start(stopCh)
 		flowInformerFactory.Start(stopCh)
 
+		// Start HTTP health check server on port 8080 (always, for both controller and admission)
+		healthMux := http.NewServeMux()
+		healthMux.HandleFunc("/healthz", router.HealthzHandler)
+		healthMux.HandleFunc("/readyz", router.ReadyzHandler)
+
+		go func() {
+			klog.Infof("Starting health check server on port 8080")
+
+			// Mark server as ready after initialization
+			go func() {
+				time.Sleep(2 * time.Second)
+				router.MarkServerReady()
+			}()
+
+			healthServer := &http.Server{
+				Addr:    ":8080",
+				Handler: healthMux,
+			}
+			if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				klog.Errorf("Health check server failed: %v", err)
+			}
+		}()
+
 		if enableController {
 			// Initialize and Run Controllers
 			framework.ForeachController(func(c framework.Controller) {
@@ -169,9 +192,11 @@ func main() {
 
 		// Start Webhook Server if certs are provided
 		if certFile != "" && keyFile != "" {
+
 			go func() {
 				klog.Infof("Starting webhook server on port %d", port)
-				// Create a server with the stop channel context if needed, but here simple ListenAndServeTLS
+
+				// Start HTTPS server for webhooks
 				if err := http.ListenAndServeTLS(fmt.Sprintf(":%d", port), certFile, keyFile, nil); err != nil {
 					klog.Fatalf("Webhook server failed: %v", err)
 				}

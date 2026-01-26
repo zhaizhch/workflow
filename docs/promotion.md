@@ -35,6 +35,10 @@
 ![多进多出 DAG](./images/multi_io_png_1769397156051.png)
 展示了多任务聚合（多个光球汇聚到一个节点）和多任务分发（一个节点触发多个下游光球）的顶级编排能力。
 
+### 6. 成功策略 (SuccessPolicy)
+
+现在，您可以为工作流定义多样化的成功标准（All, Any, Critical）。光球不再必须走完所有路径，只要满足关键节点的成功条件，整个工作流即可瞬间“通关”！
+
 ---
 
 ## 🎨 强大的逻辑表现力：支持复杂编排场景
@@ -47,62 +51,85 @@ Work-Flow 不仅支持基础的串行与并行，更具备处理极度复杂业�
 
 ```mermaid
 graph LR
-    %% ========== ① 输入层 ==========
-    A["🚀 Volcano Job<br/><small>批处理任务</small>"]
-    B["☸️ K8s Deployment<br/><small>原生资源</small>"]
+    %% ========== ① 输入层 (Input) ==========
+    A["🚀 Volcano Job<br/><small>Batch Processing</small>"]
+    B["☸️ K8s Deployment<br/><small>Native Resource</small>"]
 
-    %% ========== ② 探测层 ==========
-    A --> P1{"🌐 HTTP Probe<br/><small>/healthz</small>"}
-    A --> P2{"🔌 TCP Probe<br/><small>:2222</small>"}
-    B --> P3{"📊 TaskStatus<br/><small>Running</small>"}
+    %% ========== ② 探测与流控 (Control) ==========
+    subgraph Control ["<b>Dynamic Control Layer</b>"]
+        direction TB
+        P1{"🌐 HTTP Probe"}
+        P2{"🔌 TCP Probe"}
+        P3{"📊 TaskStatus"}
+    end
 
-    %% ========== ③ 处理层 ==========
-    P1 --> C["🔥 PyTorchJob<br/><small>Parallel For × 4</small>"]
-    P2 --> D["⚡ MPIJob<br/><small>Sequential For × 3</small>"]
-    P3 --> E["🔄 Retry Task<br/><small>3 retries / 5s</small>"]
+    A --> P1
+    A --> P2
+    B --> P3
 
-    %% ========== ④ 模板层 ==========
-    C --> F["🎯 PaddleJob<br/><small>+ Patch Config</small>"]
+    %% ========== ③ 计算与训练 (Compute) ==========
+    subgraph Compute ["<b>High-Compute Layer</b>"]
+        direction TB
+        C["🔥 PyTorchJob<br/><small>Parallel For</small>"]
+        D["⚡ MPIJob<br/><small>Sequential For</small>"]
+        E["🔄 Job Retry<br/><small>Self-Healing</small>"]
+    end
+
+    P1 --> C
+    P2 --> D
+    P3 --> E
+
+    %% ========== ④ 模板驱动 (Template) ==========
+    C --> F["🎯 PaddleJob<br/><small>Patch Config</small>"]
     D --> F
 
-    %% ========== ⑤ 逻辑层 ==========
-    F --> G{"🔀 OR Logic"}
-    E --> G
-    G -->|"Group 1<br/>C ∧ D"| H["✅ Logic Task"]
-    G -->|"Group 2<br/>E"| H
+    %% ========== ⑤ 策略判定 (SuccessPolicy) ==========
+    subgraph Policy ["<b>SuccessPolicy Engine</b>"]
+        direction TB
+        G{"🔀 Logic Gate"}
+        SP{{"🛡 SuccessPolicy<br/>(All/Any/Critical)"}}
+    end
 
-    %% ========== ⑥ 输出层 ==========
-    H --> K["🎉 Model Release<br/><small>delete-on-success</small>"]
+    F --> G
+    E --> G
+    G --> H["✅ Result Aggregator"]
+    H -.-> SP
+
+    %% ========== ⑥ 终态与清理 (Finalize) ==========
+    SP ==> K["🎉 Release / Cleanup<br/><small>delete-on-success</small>"]
 
     %% ==================== 样式定义 ====================
+    classDef Control fill:#f3e8ff,stroke:#a855f7,stroke-width:2.5px,color:#6b21a8,rx:10,ry:10;
+    classDef Compute fill:#d1fae5,stroke:#10b981,stroke-width:3px,color:#065f46,rx:15,ry:15;
+    classDef Policy fill:#e0e7ff,stroke:#6366f1,stroke-width:2.5px,color:#3730a3,rx:10,ry:10;
+    
+    class Control Control;
+    class Compute Compute;
+    class Policy Policy;
+    
     classDef volcano fill:#fef3c7,stroke:#f59e0b,stroke-width:3px,color:#92400e,rx:15,ry:15;
     classDef k8s fill:#dbeafe,stroke:#3b82f6,stroke-width:3px,color:#1e40af,rx:15,ry:15;
-    classDef probe fill:#f3e8ff,stroke:#a855f7,stroke-width:2.5px,color:#6b21a8,rx:10,ry:10;
     classDef kubeflow fill:#d1fae5,stroke:#10b981,stroke-width:3px,color:#065f46,rx:15,ry:15;
-    classDef retry fill:#fee2e2,stroke:#ef4444,stroke-width:3px,color:#991b1b,rx:15,ry:15;
-    classDef logic fill:#e0e7ff,stroke:#6366f1,stroke-width:2.5px,color:#3730a3,rx:10,ry:10;
     classDef final fill:#1e293b,stroke:#0f172a,stroke-width:4px,color:#ffffff,rx:15,ry:15;
 
     class A volcano;
     class B k8s;
-    class P1,P2,P3 probe;
-    class C,D,F kubeflow;
-    class E retry;
-    class G,H logic;
+    class F kubeflow;
     class K final;
 ```
 
 **能力说明：**
 
-| 能力         | 演示节点                                                    | 说明                                    |
-|--------------|-------------------------------------------------------------|----------------------------------------|
+| 能力         | 演示节点                                                    | 说明                                         |
+|--------------|-------------------------------------------------------------|----------------------------------------------|
 | **多工作负载** | Volcano Job, K8s Deployment, PyTorchJob, MPIJob, PaddleJob | 支持 Volcano、Kubeflow 全家族及 K8s 原生资源 |
-| **探测机制**   | HTTP/TCP/TaskStatus Probe                                 | 三重健康检查确保依赖可靠性                  |
-| **并行循环**   | PyTorchJob (4 副本), MPIJob (3 副本)                        | Parallel For 支持并行/顺序副本启动         |
-| **重试策略**   | 失败任务 (3 次重试, 5s 间隔)                                 | 自动故障恢复与指数退避                     |
-| **动态补丁**   | PaddleJob + Patch                                         | 运行时注入配置，模板高度复用                |
-| **复杂依赖**   | OR 逻辑 (Group 1 AND Group 2)                             | 支持 AND/OR 组合的依赖编排                |
-| **生命周期**   | delete-on-success                                         | 成功时清理，失败时保留现场                  |
+| **探测机制**   | HTTP/TCP/TaskStatus Probe                                   | 三重健康检查确保依赖可靠性                   |
+| **并行循环**   | PyTorchJob (4 副本), MPIJob (3 副本)                        | Parallel For 支持并行/顺序副本启动           |
+| **重试策略**   | 失败任务 (3 次重试, 5s 间隔)                                 | 自动故障恢复与指数退避                       |
+| **动态补丁**   | PaddleJob + Patch                                           | 运行时注入配置，模板高度复用                 |
+| **复杂依赖**   | OR 逻辑 (Group 1 AND Group 2)                               | 支持 AND/OR 组合的依赖编排                   |
+| **成功策略**   | **SuccessPolicy (All/Any/Critical)**                        | 灵活定义工作流成功标准，适应容错与多路径场景 |
+| **生命周期**   | delete-on-success                                           | 成功时清理，失败时保留现场                   |
 
 ---
 
@@ -114,8 +141,8 @@ Work-Flow 专为超大规模吞吐量设计，采用了 **分片工作队列架�
 
 ![分片架构可视化](./images/sharding_visualization_png_1769396865935.png)
 
-*   **硬件压榨**：任务根据 `Namespace/Name` 进行一致性哈希，均匀分布到多个独立的工作线程，最大化 CPU 利用率并彻底消除锁竞争。
-*   **无限扩展**：只需简单调整 `--workers` 参数，即可线性提升控制器处理百万级并发任务的能力。
+* **硬件压榨**：任务根据 `Namespace/Name` 进行一致性哈希，均匀分布到多个独立的工作线程，最大化 CPU 利用率并彻底消除锁竞争。
+* **无限扩展**：只需简单调整 `--workers` 参数，即可线性提升控制器处理百万级并发任务的能力。
 
 ### 🛡 全集群高可用保障 (High Availability)
 
@@ -140,9 +167,10 @@ Work-Flow 专为超大规模吞吐量设计，采用了 **分片工作队列架�
 
 通过 **WorkTemplate** 实现任务定义的标准化，再配合 **Patching** 技术在运行时动态注入变量。您可以像搭建积木一样，通过一套模板组合出无数种业务场景。
 
-### 3. 🛡 灵活的资源治理
+### 3. 🛡 灵活的资源治理与判定
 
-支持新推出的 **`delete-on-success`** 策略。该策略确保在成功时自动清理 Job 以节省存储，而在失败时保留现场以便快速调试。
+*   **智能成功标准 (SuccessPolicy)**：不再局限于“必须全成”。支持全量成功、任一路径成功或仅关键节点成功的灵活判定。
+*   **资源自动回收**：支持 **`delete-on-success`** 策略。该策略确保在成功时自动清理 Job 以节省存储，而在失败时保留现场以便快速调试。
 
 ---
 

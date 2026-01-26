@@ -259,6 +259,81 @@ func TestValidateWorkflowCreate(t *testing.T) {
 			ret:            "",
 			ExpectErr:      false,
 		},
+		{
+			Name: "validate valid SuccessPolicy Critical",
+			Workflow: flowv1alpha1.Workflow{
+				Spec: flowv1alpha1.WorkflowSpec{
+					Flows: []flowv1alpha1.Flow{
+						{Name: "a"},
+						{Name: "b"},
+					},
+					SuccessPolicy: &flowv1alpha1.SuccessPolicy{
+						Type:          flowv1alpha1.SuccessPolicyCritical,
+						CriticalFlows: []string{"a"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ExpectErr:      false,
+		},
+		{
+			Name: "validate invalid SuccessPolicy Critical (empty flows)",
+			Workflow: flowv1alpha1.Workflow{
+				Spec: flowv1alpha1.WorkflowSpec{
+					Flows: []flowv1alpha1.Flow{{Name: "a"}},
+					SuccessPolicy: &flowv1alpha1.SuccessPolicy{
+						Type: flowv1alpha1.SuccessPolicyCritical,
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "successPolicy.criticalFlows is required when type is Critical",
+			ExpectErr:      true,
+		},
+		{
+			Name: "validate invalid SuccessPolicy Critical (non-existent flow)",
+			Workflow: flowv1alpha1.Workflow{
+				Spec: flowv1alpha1.WorkflowSpec{
+					Flows: []flowv1alpha1.Flow{{Name: "a"}},
+					SuccessPolicy: &flowv1alpha1.SuccessPolicy{
+						Type:          flowv1alpha1.SuccessPolicyCritical,
+						CriticalFlows: []string{"non-existent"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "criticalFlow 'non-existent' not found",
+			ExpectErr:      true,
+		},
+		{
+			Name: "validate invalid SuccessPolicy Any (with criticalFlows)",
+			Workflow: flowv1alpha1.Workflow{
+				Spec: flowv1alpha1.WorkflowSpec{
+					Flows: []flowv1alpha1.Flow{{Name: "a"}},
+					SuccessPolicy: &flowv1alpha1.SuccessPolicy{
+						Type:          flowv1alpha1.SuccessPolicyAny,
+						CriticalFlows: []string{"a"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "successPolicy.criticalFlows should be empty when type is Any",
+			ExpectErr:      true,
+		},
+		{
+			Name: "validate unknown SuccessPolicy type",
+			Workflow: flowv1alpha1.Workflow{
+				Spec: flowv1alpha1.WorkflowSpec{
+					Flows: []flowv1alpha1.Flow{{Name: "a"}},
+					SuccessPolicy: &flowv1alpha1.SuccessPolicy{
+						Type: "Unknown",
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "unknown successPolicy type: Unknown",
+			ExpectErr:      true,
+		},
 	}
 
 	// create fake workflow clientset

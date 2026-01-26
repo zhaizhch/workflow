@@ -18,6 +18,7 @@ package validate
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -92,31 +93,113 @@ func AdmitWorkflows(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 }
 
 func validateWorkflowDAG(workflow *flowv1alpha1.Workflow, reviewResponse *admissionv1.AdmissionResponse) string {
-	var msg string
-	graphMap := make(map[string][]string, len(workflow.Spec.Flows))
-	for _, flow := range workflow.Spec.Flows {
-		if flow.DependsOn != nil && len(flow.DependsOn.Targets) > 0 {
-			graphMap[flow.Name] = flow.DependsOn.Targets
-		} else {
-			graphMap[flow.Name] = []string{}
-		}
+	// Check for empty workflow
+	if len(workflow.Spec.Flows) == 0 {
+		reviewResponse.Allowed = false
+		return "workflow must have at least one flow"
 	}
 
-	vetexs, err := LoadVertexs(graphMap)
-
-	if err != nil {
-		msg = FlowNotDAGError.Error() + ": " + err.Error()
-		if msg != "" {
-			reviewResponse.Allowed = false
-		}
+	// Validate SuccessPolicy
+	if msg := validateSuccessPolicy(workflow); msg != "" {
+		reviewResponse.Allowed = false
 		return msg
 	}
 
-	if !IsDAG(vetexs) {
-		msg = FlowNotDAGError.Error()
-		if msg != "" {
-			reviewResponse.Allowed = false
+	graphMap := make(map[string][]string, len(workflow.Spec.Flows))
+
+	for _, flow := range workflow.Spec.Flows {
+		var allDeps []string
+
+		if flow.DependsOn != nil {
+			// 1. Collect AND dependencies (Targets)
+			allDeps = append(allDeps, flow.DependsOn.Targets...)
+
+			// 2. Collect OR dependencies (OrGroups)
+			// Use conservative strategy: include all possible dependencies
+			for _, group := range flow.DependsOn.OrGroups {
+				allDeps = append(allDeps, group.Targets...)
+			}
 		}
+
+		// 3. Check For loop dependencies
+		if flow.For != nil && flow.For.DependsOn != nil {
+			// Check for self-references in For dependencies
+			for _, target := range flow.For.DependsOn.Targets {
+				if target == flow.Name {
+					reviewResponse.Allowed = false
+					return fmt.Sprintf("flow '%s' has self-referencing For dependency", flow.Name)
+				}
+			}
+
+			// Check for self-references in For OrGroups
+			for _, group := range flow.For.DependsOn.OrGroups {
+				for _, target := range group.Targets {
+					if target == flow.Name {
+						reviewResponse.Allowed = false
+						return fmt.Sprintf("flow '%s' has self-referencing For dependency in OrGroups", flow.Name)
+					}
+				}
+			}
+		}
+
+		graphMap[flow.Name] = allDeps
 	}
-	return msg
+
+	vertices, err := LoadVertexs(graphMap)
+	if err != nil {
+		reviewResponse.Allowed = false
+		return FlowNotDAGError.Error() + ": " + err.Error()
+	}
+
+	if !IsDAG(vertices) {
+		reviewResponse.Allowed = false
+		return FlowNotDAGError.Error()
+	}
+
+	return ""
+}
+
+// validateSuccessPolicy validates the SuccessPolicy configuration
+func validateSuccessPolicy(workflow *flowv1alpha1.Workflow) string {
+	if workflow.Spec.SuccessPolicy == nil {
+		return "" // Default to All, no validation needed
+	}
+
+	policy := workflow.Spec.SuccessPolicy
+
+	switch policy.Type {
+	case flowv1alpha1.SuccessPolicyCritical:
+		// Validate CriticalFlows is not empty
+		if len(policy.CriticalFlows) == 0 {
+			return "successPolicy.criticalFlows is required when type is Critical"
+		}
+
+		// Validate all CriticalFlows exist in Flows
+		flowNames := make(map[string]bool)
+		for _, flow := range workflow.Spec.Flows {
+			flowNames[flow.Name] = true
+		}
+
+		for _, criticalFlow := range policy.CriticalFlows {
+			if !flowNames[criticalFlow] {
+				return fmt.Sprintf("criticalFlow '%s' not found in workflow flows", criticalFlow)
+			}
+		}
+
+	case flowv1alpha1.SuccessPolicyAll, flowv1alpha1.SuccessPolicyAny:
+		if len(policy.CriticalFlows) > 0 {
+			return fmt.Sprintf("successPolicy.criticalFlows should be empty when type is %s", policy.Type)
+		}
+
+	case "":
+		// Empty type defaults to All
+		if len(policy.CriticalFlows) > 0 {
+			return "successPolicy.criticalFlows should be empty when type is not specified (defaults to All)"
+		}
+
+	default:
+		return fmt.Sprintf("unknown successPolicy type: %s (must be All, Any, or Critical)", policy.Type)
+	}
+
+	return ""
 }

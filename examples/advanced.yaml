@@ -9,7 +9,7 @@ spec:
   plugins:
     env: []
     svc: []
-  jobRetainPolicy: delete
+  jobRetainPolicy: delete-on-success
   flows:
     # 步骤 1: 基础设施初始化 (Native Deployment)
     - name: infra-ready
