@@ -84,17 +84,19 @@ DNS.2 = ${SERVICE}.${NAMESPACE}
 DNS.3 = ${SERVICE}.${NAMESPACE}.svc
 EOF
 
-# Create a self-signed certificate and key
-# We use a single cert that acts as its own CA to simplify things
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -config ${TMP_DIR}/server.conf \
-    -extensions v3_req \
-    -keyout ${TMP_DIR}/tls.key \
-    -out ${TMP_DIR}/tls.crt \
-    -subj "/CN=${SERVICE}.${NAMESPACE}.svc"
+# Create a CA cert
+openssl genrsa -out ${TMP_DIR}/ca.key 2048
+openssl req -x509 -new -nodes -key ${TMP_DIR}/ca.key -subj "/CN=Admission Webhook CA" -days 3650 -out ${TMP_DIR}/ca.crt
 
-# For self-signed certs, the CA cert is the same as the server cert
-cp ${TMP_DIR}/tls.crt ${TMP_DIR}/ca.crt
+# Create server key and signing request
+openssl genrsa -out ${TMP_DIR}/tls.key 2048
+openssl req -new -key ${TMP_DIR}/tls.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${TMP_DIR}/server.csr -config ${TMP_DIR}/server.conf
+
+# Sign the server cert with the CA
+openssl x509 -req -in ${TMP_DIR}/server.csr \
+    -CA ${TMP_DIR}/ca.crt -CAkey ${TMP_DIR}/ca.key \
+    -CAcreateserial -out ${TMP_DIR}/tls.crt -days 3650 \
+    -extensions v3_req -extfile ${TMP_DIR}/server.conf
 
 # Create the secret with CA cert and server cert/key
 # We delete first to ensure it's updated if it exists

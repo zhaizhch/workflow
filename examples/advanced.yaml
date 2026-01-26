@@ -5,11 +5,10 @@ metadata:
   namespace: zzc-system
 spec:
   # 全局调度配置，确保整个工作流任务在特定调度器下运行
-  schedulerName: volcano
-  plugins:
-    env: []
-    svc: []
+  
   jobRetainPolicy: delete-on-success
+  successPolicy:
+    type: Any
   flows:
     # 步骤 1: 基础设施初始化 (Native Deployment)
     - name: infra-ready
@@ -49,18 +48,6 @@ spec:
           taskStatusList:
             - taskName: data-preprocessing
               phase: Running
-
-    # 步骤 5: 逻辑组合测试 ((A AND B) OR C)
-    - name: logic-test-task
-      dependsOn:
-        orGroups:
-          # 逻辑分支 1: data-preprocessing 且 infra-ready 都完成
-          - targets: 
-              - data-preprocessing
-              - infra-ready
-          # 逻辑分支 2: probe-task 完成 (OR 关系)
-          - targets:
-              - probe-task
 
     # 步骤 4: 独立功能测试 (Parallel Splits)
 
@@ -104,3 +91,15 @@ spec:
           tcpSocketList:
             - taskName: gpu-training-task
               port: 2222
+
+    # 步骤 5: 逻辑组合测试 ((A AND B) OR C)
+    - name: logic-test-task
+      dependsOn:
+        orGroups:
+          # 逻辑分支 1: data-preprocessing 且 infra-ready 都完成
+          - targets: 
+              - data-preprocessing
+              - infra-ready
+          # 逻辑分支 2: probe-task 完成 (OR 关系)
+          - targets:
+              - probe-task

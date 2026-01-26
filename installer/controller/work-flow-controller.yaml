@@ -133,24 +133,6 @@ spec:
             requests:
               cpu: "200m"
               memory: "256Mi"
-          # Liveness probe using leader election status
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          # Readiness probe to check if controller is ready
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -209,26 +191,6 @@ spec:
             requests:
               cpu: "100m"
               memory: "128Mi"
-          # Liveness probe to restart unhealthy pods
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8443
-              scheme: HTTPS
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
-          # Readiness probe to control traffic routing
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: 8443
-              scheme: HTTPS
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
           volumeMounts:
             - name: admission-certs
               mountPath: /etc/workflow/certs
