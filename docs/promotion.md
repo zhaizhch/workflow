@@ -41,57 +41,74 @@
 
 Work-Flow 不仅支持基础的串行与并行，更具备处理极度复杂业务逻辑的能力。以下是典型的“多入口、带决策反馈和循环”的复杂 DAG 演示：
 
-### 动态流转演示
+### 全能力动态流转演示
+
+以下演示完整展现了 Work-Flow 的所有核心能力，从多工作负载支持到高级流控逻辑。
 
 ```mermaid
-graph LR
-    subgraph START ["输入层 (Inputs)"]
-        A("● 源数据 A")
-        B("● 源数据 B")
+graph TB
+    subgraph INPUT ["① 输入层 - 多工作负载支持"]
+        A["Volcano Job<br/>批处理任务"]
+        B["K8s Deployment<br/>原生资源"]
     end
 
-    subgraph CORE ["核心处理 (Core Logic)"]
-        A --> C(资源初始化)
-        B --> D(数据预处理)
-        
-        C --> Probe{健康探测 Probe}
-        Probe -- 成功 --> E(特征工程)
-        Probe -- 失败 --> F(容错重试)
-        
-        D --> Parallel{"弹性扩展 (Scaling)"}
-        Parallel -- Case 0 --> G(算子 0)
-        Parallel -- Case 1 --> H(算子 1)
-        Parallel -- Case 2 --> I(算子 2)
-        I --> J(结果聚合)
-    end
-    
-    subgraph LOOP ["迭代强化 (Iteration)"]
-        G --> Junction(( ))
-        H --> Junction
-        J --> Junction
-        
-        Junction -- "Loop (3次迭代)" --- Repeat(( ))
-        Repeat -.-> D
-    end
-    
-    subgraph FINAL ["交付层 (Registry)"]
-        E --> K(模型发布)
-        F --> K
-        Junction --> K
+    subgraph PROBE ["② 探测层 - 三重健康检查"]
+        A --> P1{"HTTP Probe<br/>/healthz"}
+        A --> P2{"TCP Probe<br/>:2222"}
+        B --> P3{"TaskStatus Probe<br/>Running"}
     end
 
-    %% 样式美化 (Aesthetic Styling)
-    classDef default fill:#ffffff,stroke:#cbd5e1,stroke-width:1px,color:#334155;
-    classDef start fill:#f8fafc,stroke:#e11d48,stroke-width:2px,color:#e11d48;
-    classDef decision fill:#f1f5f9,stroke:#3b82f6,stroke-width:2px,color:#1e40af;
-    classDef final fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#ffffff;
-    classDef parallel fill:#f0f9ff,stroke:#0ea5e9,stroke-dasharray: 5 5;
+    subgraph PARALLEL ["③ 处理层 - 并行与重试"]
+        P1 --> C["PyTorchJob (Parallel For)<br/>replicas: 4"]
+        P2 --> D["MPIJob (Sequential For)<br/>replicas: 3"]
+        P3 --> E["失败任务 (Retry)<br/>maxRetries: 3<br/>interval: 5s"]
+    end
 
-    class A,B start;
-    class Probe,Parallel,Case decision;
+    subgraph PATCH ["④ 模板层 - 动态配置注入"]
+        C --> F["PaddleJob + Patch<br/>动态注入验证配置"]
+        D --> F
+    end
+
+    subgraph LOGIC ["⑤ 逻辑层 - 复杂依赖编排"]
+        F --> G{"OR 依赖逻辑"}
+        E --> G
+        G -->|"Group 1: C AND D"| H["逻辑任务 1"]
+        G -->|"Group 2: E"| H
+    end
+
+    subgraph OUTPUT ["⑥ 输出层 - 生命周期管理"]
+        H --> K["模型发布<br/>RetainPolicy:<br/>delete-on-success"]
+    end
+
+    %% 样式定义
+    classDef volcano fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#92400e;
+    classDef k8s fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e40af;
+    classDef probe fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8;
+    classDef kubeflow fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#065f46;
+    classDef retry fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;
+    classDef logic fill:#e0e7ff,stroke:#6366f1,stroke-width:2px,color:#3730a3;
+    classDef final fill:#1e293b,stroke:#0f172a,stroke-width:3px,color:#ffffff;
+
+    class A volcano;
+    class B k8s;
+    class P1,P2,P3 probe;
+    class C,D,F kubeflow;
+    class E retry;
+    class G,H logic;
     class K final;
-    class Parallel parallel;
 ```
+
+**能力说明：**
+
+| 能力         | 演示节点                                                    | 说明                                    |
+|--------------|-------------------------------------------------------------|----------------------------------------|
+| **多工作负载** | Volcano Job, K8s Deployment, PyTorchJob, MPIJob, PaddleJob | 支持 Volcano、Kubeflow 全家族及 K8s 原生资源 |
+| **探测机制**   | HTTP/TCP/TaskStatus Probe                                 | 三重健康检查确保依赖可靠性                  |
+| **并行循环**   | PyTorchJob (4 副本), MPIJob (3 副本)                        | Parallel For 支持并行/顺序副本启动         |
+| **重试策略**   | 失败任务 (3 次重试, 5s 间隔)                                 | 自动故障恢复与指数退避                     |
+| **动态补丁**   | PaddleJob + Patch                                         | 运行时注入配置，模板高度复用                |
+| **复杂依赖**   | OR 逻辑 (Group 1 AND Group 2)                             | 支持 AND/OR 组合的依赖编排                |
+| **生命周期**   | delete-on-success                                         | 成功时清理，失败时保留现场                  |
 
 ---
 
