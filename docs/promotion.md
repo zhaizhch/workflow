@@ -43,46 +43,54 @@ Work-Flow 不仅支持基础的串行与并行，更具备处理极度复杂业�
 
 ### 动态流转演示
 
-![复杂 DAG 动态流转](./images/complex_dag_animation_v3.webp)
-
 ```mermaid
 graph LR
-    %% 节点定义
-    A("● A") --> C(C)
-    B("● B") --> D(D)
+    subgraph START ["输入层 (Inputs)"]
+        A("● 源数据 A")
+        B("● 源数据 B")
+    end
+
+    subgraph CORE ["核心处理 (Core Logic)"]
+        A --> C(资源初始化)
+        B --> D(数据预处理)
+        
+        C --> Probe{健康探测 Probe}
+        Probe -- 成功 --> E(特征工程)
+        Probe -- 失败 --> F(容错重试)
+        
+        D --> Parallel{"弹性扩展 (Scaling)"}
+        Parallel -- Case 0 --> G(算子 0)
+        Parallel -- Case 1 --> H(算子 1)
+        Parallel -- Case 2 --> I(算子 2)
+        I --> J(结果聚合)
+    end
     
-    C --> CondC{C 成功?}
-    CondC -- yes --> E(E)
-    CondC -- no --> F(F)
+    subgraph LOOP ["迭代强化 (Iteration)"]
+        G --> Junction(( ))
+        H --> Junction
+        J --> Junction
+        
+        Junction -- "Loop (3次迭代)" --- Repeat(( ))
+        Repeat -.-> D
+    end
     
-    D --> Case{条件分支}
-    Case -- α --> G(G)
-    Case -- β --> H(H)
-    Case -- γ --> I(I)
-    I --> J(J)
-    
-    %% 汇聚与反馈
-    G --> Junction(( ))
-    H --> Junction
-    J --> Junction
-    
-    Junction -- "循环 (3次)" --- Loop(( ))
-    Loop -.-> D
-    
-    %% 最终汇聚
-    E --> K(K)
-    F --> K
-    Junction --> K
-    
-    %% 样式美化
-    classDef default fill:#fff,stroke:#333,stroke-width:1px;
-    classDef start fill:#fff,stroke:#e74c3c,stroke-width:2px;
-    classDef decision fill:#f8f9fa,stroke:#2980b9,stroke-width:1px;
-    classDef final fill:#2c3e50,stroke:#2c3e50,stroke-width:2px,color:#fff;
-    
+    subgraph FINAL ["交付层 (Registry)"]
+        E --> K(模型发布)
+        F --> K
+        Junction --> K
+    end
+
+    %% 样式美化 (Aesthetic Styling)
+    classDef default fill:#ffffff,stroke:#cbd5e1,stroke-width:1px,color:#334155;
+    classDef start fill:#f8fafc,stroke:#e11d48,stroke-width:2px,color:#e11d48;
+    classDef decision fill:#f1f5f9,stroke:#3b82f6,stroke-width:2px,color:#1e40af;
+    classDef final fill:#1e293b,stroke:#0f172a,stroke-width:2px,color:#ffffff;
+    classDef parallel fill:#f0f9ff,stroke:#0ea5e9,stroke-dasharray: 5 5;
+
     class A,B start;
-    class CondC,Case decision;
+    class Probe,Parallel,Case decision;
     class K final;
+    class Parallel parallel;
 ```
 
 ---
