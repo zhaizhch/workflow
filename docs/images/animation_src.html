@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Workflow Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        svg {
+            width: 1000px;
+            height: 600px;
+        }
+        .node {
+            fill: white;
+            stroke: #333;
+            stroke-width: 2;
+        }
+        .node-rect {
+            rx: 8;
+            ry: 8;
+        }
+        .node-start {
+            stroke: #e74c3c;
+            stroke-width: 3;
+        }
+        .node-final {
+            fill: #2c3e50;
+            stroke: #2c3e50;
+        }
+        .node-text {
+            font-size: 18px;
+            font-weight: bold;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+        }
+        .final-text {
+            fill: white;
+        }
+        .decision {
+            fill: #f8f9fa;
+            stroke: #2980b9;
+        }
+        .path {
+            fill: none;
+            stroke: #333;
+            stroke-width: 1.5;
+            stroke-dasharray: 5, 5;
+        }
+        .red-ball {
+            fill: #e74c3c;
+            filter: drop-shadow(0 0 5px rgba(231, 76, 60, 0.8));
+            opacity: 0;
+        }
+        .label {
+            font-size: 12px;
+            fill: #666;
+        }
+        /* Animation keyframes */
+        @keyframes followPath {
+            0% { offset-distance: 0%; opacity: 1; }
+            95% { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <svg id="canvas" viewBox="0 0 1000 600">
+        <!-- Define Paths -->
+        <!-- Path 1: A -> C -> Cond -> E -> K -->
+        <path id="path_ACEK" d="M 120 150 L 220 150 M 270 150 L 320 150 M 370 150 L 450 110 M 500 110 L 850 300" class="path" style="display:none;"/>
+        
+        <!-- Individual segments for better animation control -->
+        <path id="seg_AC" d="M 120 150 L 220 150" class="path"/>
+        <path id="seg_C_Cond" d="M 270 150 L 320 150" class="path"/>
+        <path id="seg_Cond_E" d="M 370 135 L 450 110" class="path"/>
+        <path id="seg_E_K" d="M 500 110 C 650 110, 750 300, 850 300" class="path"/>
+        
+        <path id="seg_Cond_F" d="M 370 165 L 450 190" class="path"/>
+        <path id="seg_F_K" d="M 500 190 C 650 190, 750 300, 850 300" class="path"/>
+
+        <path id="seg_BD" d="M 120 450 L 220 450" class="path"/>
+        <path id="seg_D_Case" d="M 270 450 L 320 450" class="path"/>
+        
+        <path id="seg_Case_G" d="M 370 435 L 450 350" class="path"/>
+        <path id="seg_Case_H" d="M 370 450 L 450 450" class="path"/>
+        <path id="seg_Case_I" d="M 370 465 L 450 550" class="path"/>
+        <path id="seg_I_J" d="M 500 550 L 570 550" class="path"/>
+
+        <path id="seg_G_Junc" d="M 510 350 C 650 350, 700 450, 750 450" class="path"/>
+        <path id="seg_H_Junc" d="M 510 450 L 750 450" class="path"/>
+        <path id="seg_J_Junc" d="M 630 550 C 700 550, 720 450, 750 450" class="path"/>
+        
+        <path id="seg_Junc_K" d="M 770 450 L 850 320" class="path"/>
+        
+        <!-- Loop feedback -->
+        <path id="seg_Loop" d="M 750 450 C 750 550, 245 580, 245 470" class="path" stroke-dasharray="3,3"/>
+
+        <!-- Nodes -->
+        <!-- Start A -->
+        <circle cx="80" cy="150" r="5" fill="#e74c3c"/>
+        <rect x="90" y="125" width="50" height="50" class="node node-rect node-start"/>
+        <text x="115" y="150" class="node-text">A</text>
+
+        <!-- Node C -->
+        <rect x="220" y="125" width="50" height="50" class="node node-rect"/>
+        <text x="245" y="150" class="node-text">C</text>
+
+        <!-- Cond Diamond -->
+        <path d="M 345 125 L 370 150 L 345 175 L 320 150 Z" class="node decision"/>
+        <text x="345" y="145" style="font-size: 10px; fill:#2980b9;" text-anchor="middle">C succeed?</text>
+
+        <!-- Node E & F -->
+        <rect x="450" y="85" width="50" height="50" class="node node-rect"/>
+        <text x="475" y="110" class="node-text">E</text>
+        <rect x="450" y="165" width="50" height="50" class="node node-rect"/>
+        <text x="475" y="190" class="node-text">F</text>
+
+        <!-- Start B -->
+        <circle cx="80" cy="450" r="5" fill="#e74c3c"/>
+        <rect x="90" y="425" width="50" height="50" class="node node-rect node-start"/>
+        <text x="115" y="450" class="node-text">B</text>
+
+        <!-- Node D -->
+        <rect x="220" y="425" width="50" height="50" class="node node-rect"/>
+        <text x="245" y="450" class="node-text">D</text>
+
+        <!-- Case Diamond -->
+        <path d="M 345 425 L 370 450 L 345 475 L 320 450 Z" class="node decision"/>
+        <text x="345" y="450" style="font-size: 10px; fill:#2980b9;" text-anchor="middle">case</text>
+
+        <!-- Node G, H, I, J -->
+        <rect x="450" y="325" width="60" height="50" class="node node-rect"/>
+        <text x="480" y="350" class="node-text">G</text>
+        <rect x="450" y="425" width="60" height="50" class="node node-rect"/>
+        <text x="480" y="450" class="node-text">H</text>
+        <rect x="450" y="525" width="50" height="50" class="node node-rect"/>
+        <text x="475" y="550" class="node-text">I</text>
+        <rect x="570" y="525" width="60" height="50" class="node node-rect"/>
+        <text x="600" y="550" class="node-text">J</text>
+
+        <!-- Junction -->
+        <circle cx="750" cy="450" r="20" fill="white" stroke="#333" stroke-dasharray="2,2"/>
+        <path d="M 765 450 A 15 15 0 1 1 735 450" fill="none" stroke="#2980b9" stroke-width="2" marker-end="url(#arrowhead)"/>
+        <text x="750" y="445" style="font-size: 8px;">3 times</text>
+
+        <!-- Final K -->
+        <rect x="850" y="275" width="50" height="50" class="node node-rect node-final"/>
+        <text x="875" y="300" class="node-text final-text">K</text>
+
+        <!-- Labels -->
+        <text x="390" y="130" class="label">yes</text>
+        <text x="390" y="185" class="label">no</text>
+        <text x="390" y="410" class="label">case α</text>
+        <text x="390" y="445" class="label">case β</text>
+        <text x="385" y="520" class="label">case γ</text>
+
+        <!-- Red Ball -->
+        <circle id="ball" r="8" class="red-ball"/>
+    </svg>
+
+    <script>
+        const ball = document.getElementById('ball');
+        
+        async function animateBall(pathId, duration) {
+            const path = document.getElementById(pathId);
+            ball.style.offsetPath = `path('${path.getAttribute('d')}')`;
+            ball.style.animation = `followPath ${duration}ms linear forwards`;
+            return new Promise(resolve => setTimeout(resolve, duration));
+        }
+
+        async function runCycle() {
+            // Sequence A
+            await animateBall('seg_AC', 600);
+            await animateBall('seg_C_Cond', 400);
+            // Case yes
+            await animateBall('seg_Cond_E', 400);
+            await animateBall('seg_E_K', 1000);
+
+            // Sequence B with loops
+            for (let i = 0; i < 3; i++) {
+                await animateBall('seg_BD', 600);
+                await animateBall('seg_D_Case', 400);
+                
+                // Pick one randomly or sequence them? Let's sequence them for the demo
+                const caseSeg = i === 0 ? 'seg_Case_G' : (i === 1 ? 'seg_Case_H' : 'seg_Case_I');
+                await animateBall(caseSeg, 500);
+                if (i === 2) await animateBall('seg_I_J', 400);
+                
+                const juncSeg = i === 0 ? 'seg_G_Junc' : (i === 1 ? 'seg_H_Junc' : 'seg_J_Junc');
+                await animateBall(juncSeg, 800);
+                
+                if (i < 2) {
+                    await animateBall('seg_Loop', 1000);
+                } else {
+                    await animateBall('seg_Junc_K', 800);
+                }
+            }
+            
+            setTimeout(runCycle, 1000); // Repeat
+        }
+
+        window.onload = runCycle;
+    </script>
+</body>
+</html>

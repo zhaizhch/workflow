@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Work-Flow Premium Animation</title>
+    <style>
+        :root {
+            --primary-blue: #3498db;
+            --success-green: #2ecc71;
+            --danger-red: #e74c3c;
+            --dark-bg: #2c3e50;
+            --light-gray: #f8f9fa;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: white;
+            font-family: 'Inter', -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            max-width: 1000px;
+            max-height: 600px;
+        }
+        .node-rect {
+            fill: white;
+            stroke: #d1d8e0;
+            stroke-width: 1.5;
+            rx: 12;
+            ry: 12;
+            transition: all 0.3s ease;
+        }
+        .node-start {
+            stroke: var(--danger-red);
+            stroke-width: 2.5;
+        }
+        .node-final {
+            fill: var(--dark-bg);
+            stroke: var(--dark-bg);
+        }
+        .node-text {
+            font-size: 16px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            fill: #4b6584;
+        }
+        .final-text {
+            fill: white;
+        }
+        .decision-diamond {
+            fill: var(--light-gray);
+            stroke: var(--primary-blue);
+            stroke-width: 1.5;
+        }
+        .path-line {
+            fill: none;
+            stroke: #cbd5e0;
+            stroke-width: 2;
+            stroke-dasharray: 4, 4;
+        }
+        /* Glowing light effect */
+        .light-sphere {
+            fill: var(--danger-red);
+            filter: url(#glow);
+            opacity: 0;
+        }
+        .label-text {
+            font-size: 11px;
+            fill: #7f8c8d;
+            font-weight: 500;
+        }
+        @keyframes flow {
+            0% { offset-distance: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <svg viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet">
+        <defs>
+            <!-- Glow effect filter -->
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+            
+            <!-- Arrow marker -->
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e0" />
+            </marker>
+        </defs>
+
+        <!-- Connectivity Paths (Dashed Background) -->
+        <g id="paths">
+            <!-- A -> C -->
+            <path d="M 140 150 L 220 150" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- C -> Cond -->
+            <path d="M 280 150 L 320 150" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- Cond -> E -->
+            <path d="M 370 135 L 440 110" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- Cond -> F -->
+            <path d="M 370 165 L 440 190" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- E / F -> K -->
+            <path d="M 500 110 C 650 110, 750 280, 840 295" class="path-line" marker-end="url(#arrowhead)"/>
+            <path d="M 500 190 C 650 190, 750 310, 840 305" class="path-line" marker-end="url(#arrowhead)"/>
+
+            <!-- B -> D -->
+            <path d="M 140 450 L 220 450" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- D -> Case -->
+            <path d="M 280 450 L 320 450" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- Case -> G/H/I -->
+            <path d="M 370 435 L 440 360" class="path-line" marker-end="url(#arrowhead)"/>
+            <path d="M 370 450 L 440 450" class="path-line" marker-end="url(#arrowhead)"/>
+            <path d="M 370 465 L 440 540" class="path-line" marker-end="url(#arrowhead)"/>
+            <!-- I -> J -->
+            <path d="M 510 550 L 560 550" class="path-line" marker-end="url(#arrowhead)"/>
+            
+            <!-- Junction paths -->
+            <path d="M 510 350 C 680 350, 720 440, 740 445" class="path-line" marker-end="url(#arrowhead)"/>
+            <path d="M 510 450 L 740 450" class="path-line" marker-end="url(#arrowhead)"/>
+            <path d="M 630 550 C 700 550, 720 460, 740 455" class="path-line" marker-end="url(#arrowhead)"/>
+
+            <!-- Junction to K -->
+            <path d="M 770 450 L 840 320" class="path-line" marker-end="url(#arrowhead)"/>
+
+            <!-- Loop Back -->
+            <path id="loop-path" d="M 750 470 C 750 580, 250 580, 250 480" class="path-line" style="stroke: var(--primary-blue); opacity: 0.4;"/>
+        </g>
+
+        <!-- Animation Hidden Paths (for offset-path) -->
+        <g id="anim-paths" style="display:none;">
+            <path id="p_AC" d="M 115 150 L 250 150"/>
+            <path id="p_C_Cond" d="M 250 150 L 345 150"/>
+            <path id="p_Cond_E" d="M 345 150 Q 370 130, 470 110"/>
+            <path id="p_Cond_F" d="M 345 150 Q 370 170, 470 190"/>
+            <path id="p_E_K" d="M 470 110 C 650 110, 750 300, 875 300"/>
+            <path id="p_F_K" d="M 470 190 C 650 190, 750 300, 875 300"/>
+
+            <path id="p_BD" d="M 115 450 L 250 450"/>
+            <path id="p_D_Case" d="M 250 450 L 345 450"/>
+            <path id="p_Case_G" d="M 345 450 Q 370 410, 480 350"/>
+            <path id="p_Case_H" d="M 345 450 L 480 450"/>
+            <path id="p_Case_I" d="M 345 450 Q 370 490, 475 550"/>
+            <path id="p_I_J" d="M 475 550 L 600 550"/>
+            
+            <path id="p_G_Junc" d="M 480 350 C 680 350, 720 450, 750 450"/>
+            <path id="p_H_Junc" d="M 480 450 L 750 450"/>
+            <path id="p_J_Junc" d="M 600 550 C 700 550, 720 450, 750 450"/>
+            <path id="p_Loop" d="M 750 450 C 750 580, 250 580, 250 450"/>
+            <path id="p_Junc_K" d="M 750 450 L 875 300"/>
+        </g>
+
+        <!-- Nodes Layer -->
+        <!-- A/B Start -->
+        <g transform="translate(90, 125)">
+            <circle cx="-10" cy="25" r="4" fill="var(--danger-red)"/>
+            <rect width="50" height="50" class="node-rect node-start"/>
+            <text x="25" y="27" class="node-text">A</text>
+        </g>
+        <g transform="translate(90, 425)">
+            <circle cx="-10" cy="25" r="4" fill="var(--danger-red)"/>
+            <rect width="50" height="50" class="node-rect node-start"/>
+            <text x="25" y="27" class="node-text">B</text>
+        </g>
+
+        <!-- C/D Nodes -->
+        <g transform="translate(220, 125)">
+            <rect width="60" height="50" class="node-rect"/>
+            <text x="30" y="27" class="node-text">C</text>
+        </g>
+        <g transform="translate(220, 425)">
+            <rect width="60" height="50" class="node-rect"/>
+            <text x="30" y="27" class="node-text">D</text>
+        </g>
+
+        <!-- Decisions -->
+        <g transform="translate(345, 150)">
+            <path d="M -30 0 L 0 -30 L 30 0 L 0 30 Z" class="node-rect decision-diamond"/>
+            <text y="-8" style="font-size: 8px; fill: #2980b9;" text-anchor="middle">C succeed?</text>
+        </g>
+        <g transform="translate(345, 450)">
+            <path d="M -30 0 L 0 -30 L 30 0 L 0 30 Z" class="node-rect decision-diamond"/>
+            <text style="font-size: 10px; fill: #2980b9;" text-anchor="middle">case</text>
+        </g>
+
+        <!-- E/F/G/H/I/J Nodes -->
+        <g transform="translate(440, 85)"><rect width="60" height="50" class="node-rect"/><text x="30" y="27" class="node-text">E</text></g>
+        <g transform="translate(440, 165)"><rect width="60" height="50" class="node-rect"/><text x="30" y="27" class="node-text">F</text></g>
+        <g transform="translate(450, 325)"><rect width="60" height="50" class="node-rect"/><text x="30" y="27" class="node-text">G</text></g>
+        <g transform="translate(450, 425)"><rect width="60" height="50" class="node-rect"/><text x="30" y="27" class="node-text">H</text></g>
+        <g transform="translate(450, 525)"><rect width="50" height="50" class="node-rect"/><text x="25" y="27" class="node-text">I</text></g>
+        <g transform="translate(560, 525)"><rect width="70" height="50" class="node-rect"/><text x="35" y="27" class="node-text">J</text></g>
+
+        <!-- Junction -->
+        <g transform="translate(750, 450)">
+            <circle r="20" fill="white" stroke="#3498db" stroke-width="1" stroke-dasharray="3,2"/>
+            <path d="M 12 -5 A 12 12 0 1 1 8 -10" fill="none" stroke="var(--primary-blue)" stroke-width="1.5"/>
+            <text y="4" style="font-size: 7px; fill: #34495e;" text-anchor="middle">LOOP x3</text>
+        </g>
+
+        <!-- K Final -->
+        <g transform="translate(850, 275)">
+            <rect width="50" height="50" class="node-rect node-final"/>
+            <text x="25" y="27" class="node-text final-text">K</text>
+        </g>
+
+        <!-- Labels -->
+        <text x="390" y="120" class="label-text">yes</text>
+        <text x="390" y="195" class="label-text">no</text>
+        <text x="390" y="410" class="label-text">case α</text>
+        <text x="400" y="445" class="label-text">case β</text>
+        <text x="385" y="510" class="label-text">case γ</text>
+
+        <!-- Pulse Light -->
+        <circle id="pulse" r="10" class="light-sphere"/>
+    </svg>
+
+    <script>
+        const pulse = document.getElementById('pulse');
+
+        async function step(pathId, duration) {
+            console.log("Stepping into path:", pathId);
+            const p = document.getElementById(pathId);
+            if (!p) {
+                console.error("Path not found:", pathId);
+                return;
+            }
+            
+            // Force reset animation
+            pulse.style.animation = 'none';
+            void pulse.offsetWidth; 
+            
+            pulse.style.offsetPath = `path('${p.getAttribute('d')}')`;
+            pulse.style.animation = `flow ${duration}ms linear forwards`;
+            
+            return new Promise(r => setTimeout(r, duration));
+        }
+
+        async function main() {
+            pulse.style.opacity = "0";
+            await new Promise(r => setTimeout(r, 500));
+
+            // --- Stream A ---
+            console.log("Starting Stream A");
+            await step('p_AC', 800);
+            await step('p_C_Cond', 600);
+            
+            // Randomly branch but ensure both are shown eventually
+            const branch = Math.random() > 0.5 ? 'E' : 'F';
+            if (branch === 'E') {
+                await step('p_Cond_E', 600);
+                await step('p_E_K', 1500);
+            } else {
+                await step('p_Cond_F', 600);
+                await step('p_F_K', 1500);
+            }
+            
+            pulse.style.opacity = "0";
+            await new Promise(r => setTimeout(r, 800));
+
+            // --- Stream B ---
+            console.log("Starting Stream B (with Loops)");
+            for (let i = 0; i < 3; i++) {
+                console.log("Loop iteration:", i + 1);
+                await step('p_BD', 800);
+                await step('p_D_Case', 600);
+                
+                if (i === 0) {
+                    await step('p_Case_G', 700);
+                    await step('p_G_Junc', 1000);
+                } else if (i === 1) {
+                    await step('p_Case_H', 700);
+                    await step('p_H_Junc', 1000);
+                } else {
+                    await step('p_Case_I', 700);
+                    await step('p_I_J', 600);
+                    await step('p_J_Junc', 1000);
+                }
+
+                if (i < 2) {
+                    await step('p_Loop', 1500);
+                } else {
+                    console.log("Exiting loop to K");
+                    await step('p_Junc_K', 1200);
+                }
+            }
+
+            pulse.style.opacity = "0";
+            console.log("Full sequence complete. Restarting...");
+            setTimeout(main, 2000);
+        }
+
+        window.onload = main;
+    </script>
+</body>
+</html>

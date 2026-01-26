@@ -37,6 +37,56 @@
 
 ---
 
+## 🎨 强大的逻辑表现力：支持复杂编排场景
+
+Work-Flow 不仅支持基础的串行与并行，更具备处理极度复杂业务逻辑的能力。以下是典型的“多入口、带决策反馈和循环”的复杂 DAG 演示：
+
+### 动态流转演示
+
+![复杂 DAG 动态流转](./images/complex_dag_animation_v3.webp)
+
+```mermaid
+graph LR
+    %% 节点定义
+    A("● A") --> C(C)
+    B("● B") --> D(D)
+    
+    C --> CondC{C 成功?}
+    CondC -- yes --> E(E)
+    CondC -- no --> F(F)
+    
+    D --> Case{条件分支}
+    Case -- α --> G(G)
+    Case -- β --> H(H)
+    Case -- γ --> I(I)
+    I --> J(J)
+    
+    %% 汇聚与反馈
+    G --> Junction(( ))
+    H --> Junction
+    J --> Junction
+    
+    Junction -- "循环 (3次)" --- Loop(( ))
+    Loop -.-> D
+    
+    %% 最终汇聚
+    E --> K(K)
+    F --> K
+    Junction --> K
+    
+    %% 样式美化
+    classDef default fill:#fff,stroke:#333,stroke-width:1px;
+    classDef start fill:#fff,stroke:#e74c3c,stroke-width:2px;
+    classDef decision fill:#f8f9fa,stroke:#2980b9,stroke-width:1px;
+    classDef final fill:#2c3e50,stroke:#2c3e50,stroke-width:2px,color:#fff;
+    
+    class A,B start;
+    class CondC,Case decision;
+    class K final;
+```
+
+---
+
 ## 🏗 企业级核心优势
 
 ### ⚡ 巅峰级的并发处理 (High Concurrency)
@@ -96,6 +146,6 @@ make deploy-advanced-example
 
 **Work-Flow** 致力于打造最懂开发者的云原生编排工具。如果您正在寻找一个既有性能保证、又足够灵活轻量的任务管线方案，Work-Flow 正和您的心意！
 
-👉 **GitHub 项目地址**: [https://github.com/workflow-sh/work-flow](https://github.com/workflow-sh/work-flow)
+👉 **GitHub 项目地址**: [https://github.com/zhaizhch/workflow](https://github.com/zhaizhch/workflow)
 
 *让我们一起，重新定义云原生时代的任务流！*
