@@ -450,10 +450,6 @@ spec:
                 items:
                   type: string
                 type: array
-              skippedJobs:
-                items:
-                  type: string
-                type: array
               state:
                 properties:
                   phase:

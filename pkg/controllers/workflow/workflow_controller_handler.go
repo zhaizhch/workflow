@@ -17,6 +17,8 @@ limitations under the License.
 package workflow
 
 import (
+	"hash/fnv"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/klog/v2"
 
@@ -27,7 +29,11 @@ import (
 )
 
 func (wc *workflowcontroller) enqueue(req apis.FlowRequest) {
-	wc.queue.Add(req)
+	key := req.Namespace + "/" + req.WorkflowName
+	hash := fnv.New32a()
+	hash.Write([]byte(key))
+	index := int(hash.Sum32()) % wc.workerNum
+	wc.queues[index].Add(req)
 }
 
 func (wc *workflowcontroller) addWorkflow(obj interface{}) {

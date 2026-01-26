@@ -70,11 +70,11 @@ func (wc *workflowcontroller) constructJobFromTemplate(workflow *v1alpha1flow.Wo
 		"metadata": map[string]interface{}{
 			"name":      jobName,
 			"namespace": workflow.Namespace,
-			"labels": map[string]string{
+			"labels": map[string]interface{}{
 				CreatedByWorkTemplate: GenerateObjectString(workflow.Namespace, flow.Name),
 				CreatedByWorkflow:     GenerateObjectString(workflow.Namespace, workflow.Name),
 			},
-			"annotations": map[string]string{
+			"annotations": map[string]interface{}{
 				CreatedByWorkTemplate: GenerateObjectString(workflow.Namespace, flow.Name),
 				CreatedByWorkflow:     GenerateObjectString(workflow.Namespace, workflow.Name),
 			},

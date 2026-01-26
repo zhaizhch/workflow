@@ -17,17 +17,22 @@ limitations under the License.
 package worktemplate
 
 import (
+	"hash/fnv"
 	"strings"
 
 	"k8s.io/klog/v2"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 	"github.com/workflow.sh/work-flow/pkg/controllers/apis"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 func (jt *worktemplatecontroller) enqueue(req apis.FlowRequest) {
-	jt.queue.Add(req)
+	key := req.Namespace + "/" + req.WorkTemplateName
+	hash := fnv.New32a()
+	hash.Write([]byte(key))
+	index := int(hash.Sum32()) % jt.workerNum
+	jt.queues[index].Add(req)
 }
 
 func (jt *worktemplatecontroller) addWorkTemplate(obj interface{}) {
@@ -38,7 +43,7 @@ func (jt *worktemplatecontroller) addWorkTemplate(obj interface{}) {
 	}
 
 	req := apis.FlowRequest{
-		Namespace:       jobTemplate.Namespace,
+		Namespace:        jobTemplate.Namespace,
 		WorkTemplateName: jobTemplate.Name,
 	}
 
@@ -56,7 +61,7 @@ func (jt *worktemplatecontroller) addJob(obj interface{}) {
 		return
 	}
 
-	//Filter vcjobs created by Workflow
+	//Filter workloads created by Workflow
 	namespaceName := strings.Split(job.Labels[CreatedByWorkTemplate], ".")
 	if len(namespaceName) != CreateByWorkTemplateValueNum {
 		return
@@ -64,7 +69,7 @@ func (jt *worktemplatecontroller) addJob(obj interface{}) {
 	namespace, name := namespaceName[0], namespaceName[1]
 
 	req := apis.FlowRequest{
-		Namespace:       namespace,
+		Namespace:        namespace,
 		WorkTemplateName: name,
 	}
 	jt.enqueueWorkTemplate(req)

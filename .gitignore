@@ -9,4 +9,5 @@ _output/
 # Configurations
 .env
 .github/
+coverage.out
 

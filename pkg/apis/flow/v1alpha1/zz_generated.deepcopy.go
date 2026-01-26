@@ -581,11 +581,6 @@ func (in *WorkflowStatus) DeepCopyInto(out *WorkflowStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.SkippedJobs != nil {
-		in, out := &in.SkippedJobs, &out.SkippedJobs
-		*out = make([]string, len(*in))
-		copy(*out, *in)
-	}
 	if in.JobStatusList != nil {
 		in, out := &in.JobStatusList, &out.JobStatusList
 		*out = make([]JobStatus, len(*in))

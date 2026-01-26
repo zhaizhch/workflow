@@ -79,7 +79,9 @@ type worktemplatecontroller struct {
 	// WorkTemplate Event recorder
 	recorder record.EventRecorder
 
-	queue               workqueue.TypedRateLimitingInterface[apis.FlowRequest]
+	// queues for sharding
+	queues              []workqueue.TypedRateLimitingInterface[apis.FlowRequest]
+	workerNum           int
 	enqueueWorkTemplate func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
@@ -135,7 +137,11 @@ func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) er
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: jt.kubeClient.CoreV1().Events("")})
 
 	jt.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "workflow-controller"})
-	jt.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
+	jt.workerNum = int(opt.WorkerNum)
+	jt.queues = make([]workqueue.TypedRateLimitingInterface[apis.FlowRequest], jt.workerNum)
+	for i := 0; i < jt.workerNum; i++ {
+		jt.queues[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
+	}
 
 	jt.enqueueWorkTemplate = jt.enqueue
 
@@ -145,7 +151,10 @@ func (jt *worktemplatecontroller) Initialize(opt *framework.ControllerOption) er
 }
 
 func (jt *worktemplatecontroller) Run(stopCh <-chan struct{}) {
-	defer jt.queue.ShutDown()
+	for i := 0; i < jt.workerNum; i++ {
+		queueIndex := i
+		defer jt.queues[queueIndex].ShutDown()
+	}
 
 	jt.batchInformerFactory.Start(stopCh)
 	jt.flowInformerFactory.Start(stopCh)
@@ -164,20 +173,24 @@ func (jt *worktemplatecontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(jt.worker, time.Second, stopCh)
+	for i := 0; i < jt.workerNum; i++ {
+		queueIndex := i
+		go wait.Until(func() { jt.worker(queueIndex) }, time.Second, stopCh)
+	}
 
 	klog.Infof("WorkTemplateController is running ...... ")
 
 	<-stopCh
 }
 
-func (jt *worktemplatecontroller) worker() {
-	for jt.processNextWorkItem() {
+func (jt *worktemplatecontroller) worker(queueIndex int) {
+	for jt.processNextWorkItem(queueIndex) {
 	}
 }
 
-func (jt *worktemplatecontroller) processNextWorkItem() bool {
-	req, shutdown := jt.queue.Get()
+func (jt *worktemplatecontroller) processNextWorkItem(queueIndex int) bool {
+	queue := jt.queues[queueIndex]
+	req, shutdown := queue.Get()
 	if shutdown {
 		// Stop working
 		return false
@@ -189,10 +202,10 @@ func (jt *worktemplatecontroller) processNextWorkItem() bool {
 	// not call Forget if a transient error occurs, instead the item is
 	// put back on the workqueue and attempted again after a back-off
 	// period.
-	defer jt.queue.Done(req)
+	defer queue.Done(req)
 
 	err := jt.syncHandler(&req)
-	jt.handleWorkTemplateErr(err, req)
+	jt.handleWorkTemplateErr(err, req, queue)
 
 	return true
 }
@@ -222,22 +235,22 @@ func (jt *worktemplatecontroller) handleWorkTemplate(req *apis.FlowRequest) erro
 	return nil
 }
 
-func (jt *worktemplatecontroller) handleWorkTemplateErr(err error, req apis.FlowRequest) {
+func (jt *worktemplatecontroller) handleWorkTemplateErr(err error, req apis.FlowRequest, queue workqueue.TypedRateLimitingInterface[apis.FlowRequest]) {
 	if err == nil {
-		jt.queue.Forget(req)
+		queue.Forget(req)
 		return
 	}
 
-	if jt.maxRequeueNum == -1 || jt.queue.NumRequeues(req) < jt.maxRequeueNum {
+	if jt.maxRequeueNum == -1 || queue.NumRequeues(req) < jt.maxRequeueNum {
 		klog.V(4).Infof("Error syncing jobTemplate request %v for %v.", req, err)
-		jt.queue.AddRateLimited(req)
+		queue.AddRateLimited(req)
 		return
 	}
 
 	jt.recordEventsForWorkTemplate(req.Namespace, req.WorkTemplateName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v WorkTemplate failed for %v", req.Action, err))
 	klog.V(2).Infof("Dropping WorkTemplate request %v out of the queue for %v.", req, err)
-	jt.queue.Forget(req)
+	queue.Forget(req)
 }
 
 func (jt *worktemplatecontroller) recordEventsForWorkTemplate(namespace, name, eventType, reason, message string) {

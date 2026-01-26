@@ -77,7 +77,9 @@ type workflowcontroller struct {
 	// record events
 	recorder record.EventRecorder
 
-	queue           workqueue.TypedRateLimitingInterface[apis.FlowRequest]
+	// queues for sharding
+	queues          []workqueue.TypedRateLimitingInterface[apis.FlowRequest]
+	workerNum       int
 	enqueueWorkflow func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
@@ -144,7 +146,11 @@ func (wc *workflowcontroller) Initialize(opt *framework.ControllerOption) error 
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: wc.kubeClient.CoreV1().Events("")})
 
 	wc.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "workflow-controller"})
-	wc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
+	wc.workerNum = int(opt.WorkerNum)
+	wc.queues = make([]workqueue.TypedRateLimitingInterface[apis.FlowRequest], wc.workerNum)
+	for i := 0; i < wc.workerNum; i++ {
+		wc.queues[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
+	}
 
 	wc.enqueueWorkflow = wc.enqueue
 
@@ -155,7 +161,10 @@ func (wc *workflowcontroller) Initialize(opt *framework.ControllerOption) error 
 }
 
 func (wc *workflowcontroller) Run(stopCh <-chan struct{}) {
-	defer wc.queue.ShutDown()
+	for i := 0; i < wc.workerNum; i++ {
+		queueIndex := i // capture loop variable
+		defer wc.queues[queueIndex].ShutDown()
+	}
 
 	wc.flowInformerFactory.Start(stopCh)
 	wc.dynamicInformerFactory.Start(stopCh)
@@ -179,28 +188,32 @@ func (wc *workflowcontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(wc.worker, time.Second, stopCh)
+	for i := 0; i < wc.workerNum; i++ {
+		queueIndex := i
+		go wait.Until(func() { wc.worker(queueIndex) }, time.Second, stopCh)
+	}
 
-	klog.Infof("WorkflowController is running ...... ")
+	klog.Infof("WorkflowController is running with %d workers ... ", wc.workerNum)
 
 	<-stopCh
 }
 
-func (wc *workflowcontroller) worker() {
-	for wc.processNextWorkItem() {
+func (wc *workflowcontroller) worker(queueIndex int) {
+	for wc.processNextWorkItem(queueIndex) {
 	}
 }
 
-func (wc *workflowcontroller) processNextWorkItem() bool {
-	req, shutdown := wc.queue.Get()
+func (wc *workflowcontroller) processNextWorkItem(queueIndex int) bool {
+	queue := wc.queues[queueIndex]
+	req, shutdown := queue.Get()
 	if shutdown {
 		return false
 	}
 
-	defer wc.queue.Done(req)
+	defer queue.Done(req)
 
 	err := wc.syncHandler(&req)
-	wc.handleWorkflowErr(err, req)
+	wc.handleWorkflowErr(err, req, queue)
 
 	return true
 }
@@ -226,20 +239,20 @@ func (wc *workflowcontroller) handleWorkflow(req *apis.FlowRequest) error {
 	return nil
 }
 
-func (wc *workflowcontroller) handleWorkflowErr(err error, req apis.FlowRequest) {
+func (wc *workflowcontroller) handleWorkflowErr(err error, req apis.FlowRequest, queue workqueue.TypedRateLimitingInterface[apis.FlowRequest]) {
 	if err == nil {
-		wc.queue.Forget(req)
+		queue.Forget(req)
 		return
 	}
 
-	if wc.maxRequeueNum == -1 || wc.queue.NumRequeues(req) < wc.maxRequeueNum {
-		wc.queue.AddRateLimited(req)
+	if wc.maxRequeueNum == -1 || queue.NumRequeues(req) < wc.maxRequeueNum {
+		queue.AddRateLimited(req)
 		return
 	}
 
 	wc.recordEventsForWorkflow(req.Namespace, req.WorkflowName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v failed for %v", req.Action, err))
-	wc.queue.Forget(req)
+	queue.Forget(req)
 }
 
 func (wc *workflowcontroller) recordEventsForWorkflow(namespace, name, eventType, reason, message string) {

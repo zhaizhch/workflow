@@ -80,7 +80,7 @@ metadata:
   labels:
     app: work-flow-controller
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: work-flow-controller
@@ -108,6 +108,10 @@ spec:
             - --v=4
             - --enable-controller=true
             - --enabled-admission=/workflows/validate
+            - --workers=2
+            - --leader-elect=true
+            - --leader-elect-resource-lock=leases
+            - --leader-elect-id=workflow-controller
 ---
 apiVersion: apps/v1
 kind: Deployment

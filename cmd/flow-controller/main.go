@@ -17,19 +17,24 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 
 	batchclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 
+	"github.com/google/uuid"
 	flowclientset "github.com/workflow.sh/work-flow/pkg/client/clientset/versioned"
 	flowinformer "github.com/workflow.sh/work-flow/pkg/client/informers/externalversions"
 	"github.com/workflow.sh/work-flow/pkg/controllers/framework"
@@ -60,6 +65,21 @@ func main() {
 	flag.StringVar(&keyFile, "tls-private-key-file", "", "The private key file for webhooks")
 	flag.StringVar(&enabledAdmission, "enabled-admission", "workflow", "The webhooks to enable")
 	flag.BoolVar(&enableController, "enable-controller", true, "whether to enable controllers")
+
+	// Leader election flags
+	var leaderElect bool
+	var leaseDuration time.Duration
+	var renewDeadline time.Duration
+	var retryPeriod time.Duration
+	var resourceLock string
+	var leaderID string
+
+	flag.BoolVar(&leaderElect, "leader-elect", false, "Start a leader election client and gain leadership before executing the main loop. Enable this when running replicated components for high availability.")
+	flag.DurationVar(&leaseDuration, "leader-elect-lease-duration", 15*time.Second, "The duration that non-leader candidates will wait after observing a leadership renewal until attempting to acquire leadership of a led but unrenewed leader slot. This is effectively the maximum duration that a leader can be stopped before it is replaced by another candidate. This is only applicable if leader election is enabled.")
+	flag.DurationVar(&renewDeadline, "leader-elect-renew-deadline", 10*time.Second, "The interval between attempts by the acting master to renew a leadership slot before it stops leading. This must be less than or equal to the lease duration. This is only applicable if leader election is enabled.")
+	flag.DurationVar(&retryPeriod, "leader-elect-retry-period", 2*time.Second, "The duration the clients should wait between attempting acquisition and renewal of a leadership. This is only applicable if leader election is enabled.")
+	flag.StringVar(&resourceLock, "leader-elect-resource-lock", "leases", "The type of resource object that is used for locking during the leader election. Supported options are 'leases', 'endpointsleases' and 'configmapsleases'.")
+	flag.StringVar(&leaderID, "leader-elect-id", "workflow-controller", "The name of the resource lock.")
 
 	klog.InitFlags(nil)
 	flag.Parse()
@@ -104,7 +124,7 @@ func main() {
 		FlowSharedInformerFactory:  flowInformerFactory,
 		Config:                     cfg,
 		WorkerNum:                  uint32(workers),
-		MaxRequeueNum:              10, // Default value
+		MaxRequeueNum:              -1, // Default value
 	}
 
 	// Webhook setup
@@ -126,37 +146,86 @@ func main() {
 		klog.Fatalf("Failed to setup webhooks: %v", err)
 	}
 
-	if enableController {
-		// Initialize and Run Controllers
-		framework.ForeachController(func(c framework.Controller) {
-			if err := c.Initialize(opt); err != nil {
-				klog.Errorf("Failed to initialize controller %s: %v", c.Name(), err)
-				return
-			}
+	// Start Informers and Controllers
+	run := func(ctx context.Context) {
+		stopCh := ctx.Done()
 
-			go c.Run(make(chan struct{}))
-			klog.Infof("Started controller %s", c.Name())
+		kubeInformerFactory.Start(stopCh)
+		batchInformerFactory.Start(stopCh)
+		flowInformerFactory.Start(stopCh)
+
+		if enableController {
+			// Initialize and Run Controllers
+			framework.ForeachController(func(c framework.Controller) {
+				if err := c.Initialize(opt); err != nil {
+					klog.Errorf("Failed to initialize controller %s: %v", c.Name(), err)
+					return
+				}
+
+				go c.Run(stopCh)
+				klog.Infof("Started controller %s", c.Name())
+			})
+		}
+
+		// Start Webhook Server if certs are provided
+		if certFile != "" && keyFile != "" {
+			go func() {
+				klog.Infof("Starting webhook server on port %d", port)
+				// Create a server with the stop channel context if needed, but here simple ListenAndServeTLS
+				if err := http.ListenAndServeTLS(fmt.Sprintf(":%d", port), certFile, keyFile, nil); err != nil {
+					klog.Fatalf("Webhook server failed: %v", err)
+				}
+			}()
+		}
+
+		// Wait forever
+		<-stopCh
+	}
+
+	if !leaderElect {
+		run(context.TODO())
+	} else {
+		id, err := os.Hostname()
+		if err != nil {
+			klog.Fatalf("Unable to get hostname: %v", err)
+		}
+		uuidVal, _ := uuid.NewUUID()
+		id = id + "_" + uuidVal.String()
+
+		lock, err := resourcelock.New(
+			resourceLock,
+			"default", // Lock in default namespace or make configurable
+			leaderID,
+			kubeClient.CoreV1(),
+			kubeClient.CoordinationV1(),
+			resourcelock.ResourceLockConfig{
+				Identity: id,
+			},
+		)
+		if err != nil {
+			klog.Fatalf("Unable to create resource lock: %v", err)
+		}
+
+		leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
+			Lock:            lock,
+			ReleaseOnCancel: true,
+			LeaseDuration:   leaseDuration,
+			RenewDeadline:   renewDeadline,
+			RetryPeriod:     retryPeriod,
+			Callbacks: leaderelection.LeaderCallbacks{
+				OnStartedLeading: func(ctx context.Context) {
+					run(ctx)
+				},
+				OnStoppedLeading: func() {
+					klog.Fatalf("leader election lost")
+				},
+				OnNewLeader: func(identity string) {
+					if identity == id {
+						return
+					}
+					klog.Infof("new leader elected: %s", identity)
+				},
+			},
 		})
 	}
-
-	// Start Informers
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
-	kubeInformerFactory.Start(stopCh)
-	batchInformerFactory.Start(stopCh)
-	flowInformerFactory.Start(stopCh)
-
-	// Start Webhook Server if certs are provided
-	if certFile != "" && keyFile != "" {
-		go func() {
-			klog.Infof("Starting webhook server on port %d", port)
-			if err := http.ListenAndServeTLS(fmt.Sprintf(":%d", port), certFile, keyFile, nil); err != nil {
-				klog.Fatalf("Webhook server failed: %v", err)
-			}
-		}()
-	}
-
-	// Wait forever
-	select {}
 }

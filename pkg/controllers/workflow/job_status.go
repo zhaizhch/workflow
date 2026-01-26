@@ -124,11 +124,6 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 }
 
 func (wc *workflowcontroller) getJobStatusFromCluster(workflow *v1alpha1flow.Workflow, taskName, jobName string) (v1alpha1.JobPhase, error) {
-	for _, js := range workflow.Status.JobStatusList {
-		if js.Name == jobName && js.State == v1alpha1.JobPhase(v1alpha1flow.JobSkipped) {
-			return js.State, nil
-		}
-	}
 
 	jobTemplate, err := wc.workTemplateLister.WorkTemplates(workflow.Namespace).Get(taskName)
 	if err != nil {
@@ -155,7 +150,7 @@ func (wc *workflowcontroller) getJobStatusFromCluster(workflow *v1alpha1flow.Wor
 func (wc *workflowcontroller) isJobTerminalSuccess(workflow *v1alpha1flow.Workflow, jobName string) bool {
 	for _, js := range workflow.Status.JobStatusList {
 		if js.Name == jobName {
-			return js.State == v1alpha1.Completed || js.State == v1alpha1flow.JobSkipped
+			return js.State == v1alpha1.Completed
 		}
 	}
 	return false

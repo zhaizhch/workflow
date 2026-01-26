@@ -81,7 +81,7 @@ func (wc *workflowcontroller) evaluateTargetsAndProbe(workflow *v1alpha1flow.Wor
 				}
 				return false, err
 			}
-			if phase != v1alpha1.Completed && phase != v1alpha1.JobPhase(v1alpha1flow.JobSkipped) {
+			if phase != v1alpha1.Completed {
 				return false, nil
 			}
 			continue
@@ -102,7 +102,7 @@ func (wc *workflowcontroller) evaluateTargetsAndProbe(workflow *v1alpha1flow.Wor
 				return false, err
 			}
 
-			if phase != v1alpha1.Completed && phase != v1alpha1.JobPhase(v1alpha1flow.JobSkipped) {
+			if phase != v1alpha1.Completed {
 				return false, nil
 			}
 			return true, nil
@@ -160,21 +160,21 @@ func (wc *workflowcontroller) forEachReplica(workflow *v1alpha1flow.Workflow, ta
 		}
 
 		if strategy == v1alpha1flow.Any {
-			if ok {
+			if ok { // 如果是 Any 策略，只要有一个副本满足条件 (ok == true)，就立即返回 true
 				return true, nil
 			}
 			// If not ok, continue to check next replica
 		} else { // Default to All
-			if !ok {
+			if !ok { // 如果是 All 策略，只要有一个副本不满足条件 (ok == false)，就立即返回 false
 				return false, nil
 			}
 		}
 	}
 
-	if strategy == v1alpha1flow.Any {
-		return false, nil // None of the replicas satisfied the condition
+	if strategy == v1alpha1flow.Any { // 如果是 Any 策略且循环结束仍未返回，说明没有任何副本满足条件，返回 false
+		return false, nil
 	}
-	return true, nil
+	return true, nil // 如果是 All 策略且循环顺利结束没有提前返回，说明所有副本都满足了条件，返回 true
 }
 
 func (wc *workflowcontroller) evaluateProbe(workflow *v1alpha1flow.Workflow, probe *v1alpha1flow.Probe, currentTaskName string, currentIndex int) (bool, error) {

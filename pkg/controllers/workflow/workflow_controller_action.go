@@ -36,8 +36,16 @@ func (wc *workflowcontroller) syncWorkflow(workflow *v1alpha1flow.Workflow, upda
 	defer klog.V(4).Infof("End sync Workflow %s.", workflow.Name)
 
 	// JobRetainPolicy Judging whether jobs are necessary to delete
-	if (workflow.Spec.JobRetainPolicy == v1alpha1flow.Delete && (workflow.Status.State.Phase == v1alpha1flow.Succeed || workflow.Status.State.Phase == v1alpha1flow.Failed || workflow.Status.State.Phase == v1alpha1flow.Terminating)) ||
-		(workflow.Spec.JobRetainPolicy == v1alpha1flow.DeleteOnSuccess && workflow.Status.State.Phase == v1alpha1flow.Succeed) {
+	shouldDelete := false
+	switch workflow.Spec.JobRetainPolicy {
+	case v1alpha1flow.Delete:
+		phase := workflow.Status.State.Phase
+		shouldDelete = phase == v1alpha1flow.Succeed || phase == v1alpha1flow.Failed || phase == v1alpha1flow.Terminating
+	case v1alpha1flow.DeleteOnSuccess:
+		shouldDelete = workflow.Status.State.Phase == v1alpha1flow.Succeed
+	}
+
+	if shouldDelete {
 		if err := wc.deleteAllJobsCreatedByWorkflow(workflow); err != nil {
 			klog.Errorf("Failed to delete jobs of Workflow %v/%v: %v", workflow.Namespace, workflow.Name, err)
 			return err

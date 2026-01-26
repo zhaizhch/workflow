@@ -163,8 +163,6 @@ type WorkflowStatus struct {
 	// +optional
 	UnKnowJobs []string `json:"unKnowJobs,omitempty" protobuf:"bytes,6,rep,name=unKnowJobs"`
 	// +optional
-	SkippedJobs []string `json:"skippedJobs,omitempty" protobuf:"bytes,7,rep,name=skippedJobs"`
-	// +optional
 	JobStatusList []JobStatus `json:"jobStatusList,omitempty" protobuf:"bytes,8,rep,name=jobStatusList"`
 	// +optional
 	Conditions map[string]Condition `json:"conditions,omitempty" protobuf:"bytes,8,rep,name=conditions"`
@@ -220,11 +218,6 @@ const (
 	Failed      Phase = "Failed"
 	Running     Phase = "Running"
 	Pending     Phase = "Pending"
-	Skipped     Phase = "Skipped"
-)
-
-const (
-	JobSkipped batchv1alpha1.JobPhase = "Skipped"
 )
 
 // +k8s:deepcopy-gen=true

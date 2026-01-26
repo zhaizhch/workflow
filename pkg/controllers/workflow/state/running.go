@@ -30,7 +30,7 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 	switch action {
 	case v1alpha1.SyncWorkflowAction:
 		return SyncWorkflow(p.jobFlow, func(status *v1alpha1.WorkflowStatus, allJobList int) {
-			if len(status.CompletedJobs)+len(status.SkippedJobs) == allJobList {
+			if len(status.CompletedJobs) == allJobList {
 				UpdateWorkflowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
 			} else if len(status.FailedJobs) > 0 {
