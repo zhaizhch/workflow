@@ -46,48 +46,42 @@ Work-Flow 不仅支持基础的串行与并行，更具备处理极度复杂业�
 以下演示完整展现了 Work-Flow 的所有核心能力，从多工作负载支持到高级流控逻辑。
 
 ```mermaid
-graph TB
-    subgraph INPUT ["① 输入层 - 多工作负载支持"]
-        A["Volcano Job<br/>批处理任务"]
-        B["K8s Deployment<br/>原生资源"]
-    end
+graph LR
+    %% ========== ① 输入层 ==========
+    A["🚀 Volcano Job<br/><small>批处理任务</small>"]
+    B["☸️ K8s Deployment<br/><small>原生资源</small>"]
 
-    subgraph PROBE ["② 探测层 - 三重健康检查"]
-        A --> P1{"HTTP Probe<br/>/healthz"}
-        A --> P2{"TCP Probe<br/>:2222"}
-        B --> P3{"TaskStatus Probe<br/>Running"}
-    end
+    %% ========== ② 探测层 ==========
+    A --> P1{"🌐 HTTP Probe<br/><small>/healthz</small>"}
+    A --> P2{"🔌 TCP Probe<br/><small>:2222</small>"}
+    B --> P3{"📊 TaskStatus<br/><small>Running</small>"}
 
-    subgraph PARALLEL ["③ 处理层 - 并行与重试"]
-        P1 --> C["PyTorchJob (Parallel For)<br/>replicas: 4"]
-        P2 --> D["MPIJob (Sequential For)<br/>replicas: 3"]
-        P3 --> E["失败任务 (Retry)<br/>maxRetries: 3<br/>interval: 5s"]
-    end
+    %% ========== ③ 处理层 ==========
+    P1 --> C["🔥 PyTorchJob<br/><small>Parallel For × 4</small>"]
+    P2 --> D["⚡ MPIJob<br/><small>Sequential For × 3</small>"]
+    P3 --> E["🔄 Retry Task<br/><small>3 retries / 5s</small>"]
 
-    subgraph PATCH ["④ 模板层 - 动态配置注入"]
-        C --> F["PaddleJob + Patch<br/>动态注入验证配置"]
-        D --> F
-    end
+    %% ========== ④ 模板层 ==========
+    C --> F["🎯 PaddleJob<br/><small>+ Patch Config</small>"]
+    D --> F
 
-    subgraph LOGIC ["⑤ 逻辑层 - 复杂依赖编排"]
-        F --> G{"OR 依赖逻辑"}
-        E --> G
-        G -->|"Group 1: C AND D"| H["逻辑任务 1"]
-        G -->|"Group 2: E"| H
-    end
+    %% ========== ⑤ 逻辑层 ==========
+    F --> G{"🔀 OR Logic"}
+    E --> G
+    G -->|"Group 1<br/>C ∧ D"| H["✅ Logic Task"]
+    G -->|"Group 2<br/>E"| H
 
-    subgraph OUTPUT ["⑥ 输出层 - 生命周期管理"]
-        H --> K["模型发布<br/>RetainPolicy:<br/>delete-on-success"]
-    end
+    %% ========== ⑥ 输出层 ==========
+    H --> K["🎉 Model Release<br/><small>delete-on-success</small>"]
 
-    %% 样式定义
-    classDef volcano fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#92400e;
-    classDef k8s fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e40af;
-    classDef probe fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8;
-    classDef kubeflow fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#065f46;
-    classDef retry fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;
-    classDef logic fill:#e0e7ff,stroke:#6366f1,stroke-width:2px,color:#3730a3;
-    classDef final fill:#1e293b,stroke:#0f172a,stroke-width:3px,color:#ffffff;
+    %% ==================== 样式定义 ====================
+    classDef volcano fill:#fef3c7,stroke:#f59e0b,stroke-width:3px,color:#92400e,rx:15,ry:15;
+    classDef k8s fill:#dbeafe,stroke:#3b82f6,stroke-width:3px,color:#1e40af,rx:15,ry:15;
+    classDef probe fill:#f3e8ff,stroke:#a855f7,stroke-width:2.5px,color:#6b21a8,rx:10,ry:10;
+    classDef kubeflow fill:#d1fae5,stroke:#10b981,stroke-width:3px,color:#065f46,rx:15,ry:15;
+    classDef retry fill:#fee2e2,stroke:#ef4444,stroke-width:3px,color:#991b1b,rx:15,ry:15;
+    classDef logic fill:#e0e7ff,stroke:#6366f1,stroke-width:2.5px,color:#3730a3,rx:10,ry:10;
+    classDef final fill:#1e293b,stroke:#0f172a,stroke-width:4px,color:#ffffff,rx:15,ry:15;
 
     class A volcano;
     class B k8s;
