@@ -40,6 +40,7 @@ import (
 	"github.com/workflow.sh/work-flow/pkg/controllers/framework"
 	_ "github.com/workflow.sh/work-flow/pkg/controllers/workflow"
 	_ "github.com/workflow.sh/work-flow/pkg/controllers/worktemplate"
+	_ "github.com/workflow.sh/work-flow/pkg/webhooks/admission/mutate"
 	_ "github.com/workflow.sh/work-flow/pkg/webhooks/admission/validate"
 	"github.com/workflow.sh/work-flow/pkg/webhooks/config"
 	"github.com/workflow.sh/work-flow/pkg/webhooks/router"
