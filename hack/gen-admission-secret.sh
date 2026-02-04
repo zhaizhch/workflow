@@ -67,36 +67,10 @@ fi
 TMP_DIR=$(mktemp -d)
 echo "creating certs in tmpdir ${TMP_DIR}"
 
-# Create a CSR config
-cat > ${TMP_DIR}/server.conf <<EOF
-[req]
-req_extensions = v3_req
-distinguished_name = req_distinguished_name
-[req_distinguished_name]
-[ v3_req ]
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = ${SERVICE}
-DNS.2 = ${SERVICE}.${NAMESPACE}
-DNS.3 = ${SERVICE}.${NAMESPACE}.svc
-EOF
+# Create certs using Go script to handle backdating (clock skew fix)
+go run hack/gen_cert.go --service "${SERVICE}" --namespace "${NAMESPACE}" --out-dir "${TMP_DIR}"
 
-# Create a CA cert
-openssl genrsa -out ${TMP_DIR}/ca.key 2048
-openssl req -x509 -new -nodes -key ${TMP_DIR}/ca.key -subj "/CN=Admission Webhook CA" -days 3650 -out ${TMP_DIR}/ca.crt
-
-# Create server key and signing request
-openssl genrsa -out ${TMP_DIR}/tls.key 2048
-openssl req -new -key ${TMP_DIR}/tls.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${TMP_DIR}/server.csr -config ${TMP_DIR}/server.conf
-
-# Sign the server cert with the CA
-openssl x509 -req -in ${TMP_DIR}/server.csr \
-    -CA ${TMP_DIR}/ca.crt -CAkey ${TMP_DIR}/ca.key \
-    -CAcreateserial -out ${TMP_DIR}/tls.crt -days 3650 \
-    -extensions v3_req -extfile ${TMP_DIR}/server.conf
+# (openssl commands removed)
 
 # Create the secret with CA cert and server cert/key
 # We delete first to ensure it's updated if it exists

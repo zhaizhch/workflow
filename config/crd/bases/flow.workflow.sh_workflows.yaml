@@ -52,6 +52,8 @@ spec:
                 items:
                   description: Flow defines the dependent of jobs
                   properties:
+                    continueOnFail:
+                      type: boolean
                     dependsOn:
                       properties:
                         orGroups:

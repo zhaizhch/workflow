@@ -178,7 +178,14 @@ spec:
         - name: flow-admission
           image: hub.bjuci.io/dev/work-flow-admission:latest
           imagePullPolicy: Always
-          command: ["/bin/sh", "-c", "/gen-admission-secret.sh --service work-flow-service --namespace zzc-system --secret work-flow-admission-secret && cp tls.crt /etc/workflow/certs/ && cp tls.key /etc/workflow/certs/ && /flow-controller --logtostderr --v=4 --enable-controller=false --enabled-admission=/workflows/validate --tls-cert-file=/etc/workflow/certs/tls.crt --tls-private-key-file=/etc/workflow/certs/tls.key"]
+          command: ["/flow-controller"]
+          args:
+            - --logtostderr
+            - --v=4
+            - --enable-controller=false
+            - --enabled-admission=/workflows/validate
+            - --tls-cert-file=/etc/workflow/certs/tls.crt
+            - --tls-private-key-file=/etc/workflow/certs/tls.key
           ports:
             - containerPort: 8443
               name: webhook-server
@@ -194,6 +201,8 @@ spec:
           volumeMounts:
             - name: admission-certs
               mountPath: /etc/workflow/certs
+              readOnly: true
       volumes:
         - name: admission-certs
-          emptyDir: {}
+          secret:
+            secretName: work-flow-admission-secret

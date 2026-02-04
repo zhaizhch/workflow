@@ -45,6 +45,11 @@ CONTROLLER_GEN = $(LOCALBIN)/controller-gen
 install-crds: manifests
 	kubectl apply --server-side -f config/crd/bases/
 
+# Install the controller and generic admission secret
+install: install-crds
+	kubectl apply -f installer/controller/work-flow-controller.yaml
+	./hack/gen-admission-secret.sh --service work-flow-service --namespace zzc-system --secret work-flow-admission-secret
+
 # Uninstall CRDs from the cluster
 uninstall-crds:
 	kubectl delete -f config/crd/bases/
@@ -72,7 +77,7 @@ images-push:
 images: images-build-controller images-build-admission images-push
 
 clean:
-	rm -rf _output/
+	rm -rf *output/
 	rm -rf coverage.out
 	rm -rf coverage.html
 
