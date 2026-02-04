@@ -17,8 +17,6 @@ limitations under the License.
 package state
 
 import (
-	"strings"
-
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 )
 
@@ -34,38 +32,9 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 			if isWorkflowSuccessful(p.jobFlow, status, allJobList) {
 				UpdateWorkflowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
-			} else if len(status.FailedJobs) > 0 {
-				// Only transition to Failed if all failed jobs have exhausted their retries
-				allExhausted := true
-				for _, failedJobName := range status.FailedJobs {
-					canRetry := false
-					for _, flow := range p.jobFlow.Spec.Flows {
-						// Match job name to flow. We use a simple suffix/contains check
-						// since job name is {wf}-{flow} or {wf}-{flow}-{index}
-						if strings.Contains(failedJobName, flow.Name) {
-							if flow.Retry == nil {
-								break // No retry configured, this job is permanently failed
-							}
-
-							// Find its current restart count
-							for _, js := range status.JobStatusList {
-								if js.Name == failedJobName {
-									if js.RestartCount < flow.Retry.MaxRetries {
-										canRetry = true
-									}
-									break
-								}
-							}
-							break
-						}
-					}
-					if canRetry {
-						allExhausted = false
-						break
-					}
-				}
-
-				if allExhausted {
+			} else {
+				// Check workflow failure based on SuccessPolicy and ContinueOnFail
+				if isWorkflowFailed(p.jobFlow, status) {
 					status.State.Phase = v1alpha1.Failed
 				}
 			}

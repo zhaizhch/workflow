@@ -53,6 +53,8 @@ type Flow struct {
 	Retry *Retry `json:"retry,omitempty" protobuf:"bytes,8,opt,name=retry"`
 	// +optional
 	Patch *Patch `json:"patch,omitempty" protobuf:"bytes,9,opt,name=patch"`
+	// +optional
+	ContinueOnFail bool `json:"continueOnFail,omitempty" protobuf:"varint,10,opt,name=continueOnFail"`
 }
 
 // +k8s:deepcopy-gen=true
@@ -136,7 +138,7 @@ type Patch struct {
 	runtime.RawExtension `json:",inline"`
 }
 
-type Probe struct {
+type Probe struct { // slices之间可以是或的关系也可以是与的关系，但是httpGetList和tcpSocketList之间是与的关系
 	// +optional
 	HttpGetList []HttpGet `json:"httpGetList,omitempty" protobuf:"bytes,1,rep,name=httpGetList"`
 	// +optional

@@ -22,7 +22,18 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	v1alpha1flow "github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 )
+
+func (wc *workflowcontroller) isContinueOnFail(workflow *v1alpha1flow.Workflow, flowName string) bool {
+	for _, flow := range workflow.Spec.Flows {
+		if flow.Name == flowName {
+			return flow.ContinueOnFail
+		}
+	}
+	return false
+}
 
 func getJobName(workflowName string, workTemplateName string, index int) string {
 	if index >= 0 {

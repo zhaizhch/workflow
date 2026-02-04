@@ -43,6 +43,195 @@ func isWorkflowSuccessful(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus
 	}
 }
 
+// isWorkflowFailed determines if workflow is failed based on SuccessPolicy and ContinueOnFail
+func isWorkflowFailed(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus) bool {
+	policy := getSuccessPolicy(wf)
+
+	// Get list of effectively failed jobs (retries exhausted AND not ContinueOnFail)
+	permanentlyFailedJobs := getPermanentlyFailedJobs(wf, status)
+
+	if len(permanentlyFailedJobs) == 0 {
+		return false
+	}
+
+	switch policy.Type {
+	case v1alpha1.SuccessPolicyCritical:
+		// Fail only if a critical flow has failed
+		for _, failedJob := range permanentlyFailedJobs {
+			for _, criticalFlow := range policy.CriticalFlows {
+				if containsFlowName(failedJob, criticalFlow) {
+					return true
+				}
+			}
+		}
+		return false
+
+	case v1alpha1.SuccessPolicyAny:
+		// Fail only if all paths to leaf nodes are blocked
+		return areAllLeafPathsBlocked(wf, status, permanentlyFailedJobs)
+
+	case v1alpha1.SuccessPolicyAll, "":
+		// Fail if ANY job has failed (and wasn't skipped/continued logic handled in getPermanentlyFailedJobs)
+		return len(permanentlyFailedJobs) > 0
+
+	default:
+		return len(permanentlyFailedJobs) > 0
+	}
+}
+
+// getPermanentlyFailedJobs returns jobs that are failed, retries exhausted, and NOT ContinueOnFail
+func getPermanentlyFailedJobs(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus) []string {
+	var failed []string
+	for _, failedJobName := range status.FailedJobs {
+		// Find flow spec
+		var matchedFlow *v1alpha1.Flow
+		for _, flow := range wf.Spec.Flows {
+			if containsFlowName(failedJobName, flow.Name) {
+				matchedFlow = &flow
+				break
+			}
+		}
+
+		if matchedFlow == nil {
+			failed = append(failed, failedJobName) // Unknown job, treat as failed
+			continue
+		}
+
+		// Check ContinueOnFail
+		if matchedFlow.ContinueOnFail {
+			continue // Ignored failure
+		}
+
+		// Check Retries
+		if matchedFlow.Retry == nil {
+			failed = append(failed, failedJobName)
+			continue
+		}
+
+		// Check restart count
+		canRetry := false
+		for _, js := range status.JobStatusList {
+			if js.Name == failedJobName {
+				if js.RestartCount < matchedFlow.Retry.MaxRetries {
+					canRetry = true
+				}
+				break
+			}
+		}
+
+		if !canRetry {
+			failed = append(failed, failedJobName)
+		}
+	}
+	return failed
+}
+
+// areAllLeafPathsBlocked checks if all paths to valid leaf nodes are blocked by failed jobs
+func areAllLeafPathsBlocked(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus, failedJobs []string) bool {
+	// Build map of failed flows for easier lookup
+	failedFlows := make(map[string]bool)
+	for _, job := range failedJobs {
+		// Simplified: assuming job name contains flow name.
+		// Ideally we map job -> flow exactly.
+		// Here we mark the flow as failed if any of its replicas failed.
+		for _, flow := range wf.Spec.Flows {
+			if containsFlowName(job, flow.Name) {
+				failedFlows[flow.Name] = true
+			}
+		}
+	}
+
+	graph := buildDependencyGraph(wf)
+	leafNodes := findLeafNodes(graph, wf.Spec.Flows)
+
+	// A node is "blocked" if it is failed, OR if its dependencies are blocking it.
+	// We want to see if ANY leaf node is NOT blocked.
+	// Memoization for blocked status: map[flowName]bool
+	blockedCache := make(map[string]bool)
+
+	for _, leaf := range leafNodes {
+		if !isNodeBlocked(leaf, wf, graph, failedFlows, blockedCache) {
+			return false // Found a path!
+		}
+	}
+
+	return true // All paths blocked
+}
+
+func isNodeBlocked(flowName string, wf *v1alpha1.Workflow, graph map[string][]string, failedFlows map[string]bool, cache map[string]bool) bool {
+	if blocked, ok := cache[flowName]; ok {
+		return blocked
+	}
+
+	// 1. If flow itself is failed, it's blocked
+	if failedFlows[flowName] {
+		cache[flowName] = true
+		return true
+	}
+
+	// 2. If no dependencies, it's not blocked (it's a root that hasn't failed)
+	// deps := graph[flowName] // Unused, we use flowSpec directly for details
+
+	// Find the flow spec to check detailed dependency logic (OrGroups)
+	var flowSpec *v1alpha1.Flow
+	for _, f := range wf.Spec.Flows {
+		if f.Name == flowName {
+			flowSpec = &f
+			break
+		}
+	}
+
+	if flowSpec == nil {
+		// Should not happen, treat as blocked?
+		return true
+	}
+
+	if flowSpec.DependsOn == nil {
+		cache[flowName] = false
+		return false
+	}
+
+	// 3. Check detailed dependencies
+	// AND targets
+	for _, target := range flowSpec.DependsOn.Targets {
+		if isNodeBlocked(target, wf, graph, failedFlows, cache) {
+			cache[flowName] = true
+			return true
+		}
+	}
+
+	// OR groups (Any group must be unblocked)
+	if len(flowSpec.DependsOn.OrGroups) > 0 {
+		allGroupsBlocked := true
+		for _, group := range flowSpec.DependsOn.OrGroups {
+			// A group is blocked if ANY of its targets are blocked
+			groupBlocked := false
+			for _, target := range group.Targets {
+				if isNodeBlocked(target, wf, graph, failedFlows, cache) {
+					groupBlocked = true
+					break
+				}
+			}
+			if !groupBlocked {
+				allGroupsBlocked = false
+				break
+			}
+		}
+
+		if allGroupsBlocked {
+			cache[flowName] = true
+			return true
+		}
+	}
+
+	// If we passed checks:
+	// - Not failed itself
+	// - All AND targets are unblocked
+	// - At least one OR group (if any) is unblocked
+	cache[flowName] = false
+	return false
+}
+
 // getSuccessPolicy returns the success policy, defaulting to All if not specified
 func getSuccessPolicy(wf *v1alpha1.Workflow) *v1alpha1.SuccessPolicy {
 	if wf.Spec.SuccessPolicy == nil {
@@ -98,6 +287,8 @@ func hasAnySuccessfulLeaf(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus
 
 // buildDependencyGraph builds a map of flow dependencies
 // Key: flow name, Value: list of flows it depends on
+// Note: This simple graph just lists all dependencies, doesn't distinguish AND/OR for finding structure
+// But isNodeBlocked handles the logic correctly using flowSpec
 func buildDependencyGraph(wf *v1alpha1.Workflow) map[string][]string {
 	graph := make(map[string][]string)
 
@@ -108,7 +299,7 @@ func buildDependencyGraph(wf *v1alpha1.Workflow) map[string][]string {
 			// Add simple targets
 			deps = append(deps, flow.DependsOn.Targets...)
 
-			// Add OR group targets (any one group is sufficient)
+			// Add OR group targets
 			for _, orGroup := range flow.DependsOn.OrGroups {
 				deps = append(deps, orGroup.Targets...)
 			}

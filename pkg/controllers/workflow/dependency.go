@@ -81,10 +81,14 @@ func (wc *workflowcontroller) evaluateTargetsAndProbe(workflow *v1alpha1flow.Wor
 				}
 				return false, err
 			}
-			if phase != v1alpha1.Completed {
-				return false, nil
+			if phase == v1alpha1.Completed {
+				continue
 			}
-			continue
+			// Check if failed but ContinueOnFail
+			if phase == v1alpha1.Failed && wc.isContinueOnFail(workflow, targetName) {
+				continue
+			}
+			return false, nil
 		}
 
 		// Normal dependency: check replicas based on strategy
@@ -102,10 +106,14 @@ func (wc *workflowcontroller) evaluateTargetsAndProbe(workflow *v1alpha1flow.Wor
 				return false, err
 			}
 
-			if phase != v1alpha1.Completed {
-				return false, nil
+			if phase == v1alpha1.Completed {
+				return true, nil
 			}
-			return true, nil
+			// Check if failed but ContinueOnFail
+			if phase == v1alpha1.Failed && wc.isContinueOnFail(workflow, targetName) {
+				return true, nil
+			}
+			return false, nil
 		})
 		if err != nil {
 			return false, err
