@@ -23,14 +23,17 @@ CONTROLLER_GEN_VERSION ?= v0.17.3
 
 all: build
 
+.PHONY: help
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
 init:
 	mkdir -p ${BIN_DIR}
 
 generate:
 	GOPROXY=https://proxy.golang.org,direct ./hack/update-gencode.sh
 
-# Generate CRD manifests using controller-gen
-manifests: controller-gen
+manifests: controller-gen ## Generate CRD manifests using controller-gen
 	$(CONTROLLER_GEN) crd paths="./pkg/apis/..." output:crd:artifacts:config=config/crd/bases
 
 # Install controller-gen locally
@@ -41,59 +44,56 @@ controller-gen: init
 	fi
 CONTROLLER_GEN = $(LOCALBIN)/controller-gen
 
-# Install CRDs into the cluster
-install-crds: manifests
+install-crds: manifests ## Install CRDs into the cluster
 	kubectl apply --server-side -f config/crd/bases/
 
-# Install the controller and generic admission secret
-install: install-crds
+install: install-crds ## Install the controller and generic admission secret
 	kubectl apply -f installer/controller/work-flow-controller.yaml
 	./hack/gen-admission-secret.sh --service work-flow-service --namespace zzc-system --secret work-flow-admission-secret
 
-# Uninstall CRDs from the cluster
-uninstall-crds:
+uninstall-crds: ## Uninstall CRDs from the cluster
 	kubectl delete -f config/crd/bases/
 
-test:
+test: ## Run unit tests
 	go test ./pkg/...
 
-test-coverage:
+test-coverage: ## Run unit tests with coverage profile
 	go test -coverprofile=coverage.out ./pkg/...
 	go tool cover -html=coverage.out -o coverage.html
 
-build: init
+build: init ## Build flow-controller binary
 	go build -o ${BIN_DIR}/flow-controller ./cmd/flow-controller
 
-images-build-controller:
+images-build-controller: ## Build flow-controller docker image
 	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow:${IMAGE_TAG} -f build/Dockerfile .
 
-images-build-admission:
+images-build-admission: ## Build flow-admission docker image
 	docker build --platform linux/amd64 -t ${IMAGE_PREFIX}/work-flow-admission:${IMAGE_TAG} -f build/Dockerfile.webhook .
 
-images-push: 
+images-push: ## Push docker images
 	docker push ${IMAGE_PREFIX}/work-flow:${IMAGE_TAG}
 	docker push ${IMAGE_PREFIX}/work-flow-admission:${IMAGE_TAG}
 
-images: images-build-controller images-build-admission images-push
+images: images-build-controller images-build-admission images-push ## Build and push all docker images
 
-clean:
+clean: ## Clean up build outputs
 	rm -rf *output/
 	rm -rf coverage.out
 	rm -rf coverage.html
 
-deploy-example:
+deploy-example: ## Deploy simple workflow example
 	kubectl apply -f examples/worktemplates.yaml
 	kubectl apply -f examples/workflows.yaml
 
-undeploy-example:
+undeploy-example: ## Undeploy simple workflow example
 	kubectl delete -f examples/workflows.yaml
 	kubectl delete -f examples/worktemplates.yaml
 
-deploy-advanced-example:
+deploy-advanced-example: ## Deploy advanced workflow example
 	kubectl apply -f examples/advanced-templates.yaml
 	kubectl apply -f examples/advanced.yaml
 
-undeploy-advanced-example:
+undeploy-advanced-example: ## Undeploy advanced workflow example
 	kubectl delete -f examples/advanced.yaml
 	kubectl delete -f examples/advanced-templates.yaml
 
