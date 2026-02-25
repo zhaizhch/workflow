@@ -19,7 +19,10 @@ package state
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workflow/state/strategy"
 )
 
 func TestIsWorkflowSuccessful(t *testing.T) {
@@ -33,6 +36,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy All: all flows succeeded",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{Type: v1alpha1.SuccessPolicyAll},
 				},
@@ -46,6 +50,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy All: some flows failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{Type: v1alpha1.SuccessPolicyAll},
 				},
@@ -60,6 +65,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy Any: at least one leaf succeeded (A->B, A->C, leaf: B, C)",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{Type: v1alpha1.SuccessPolicyAny},
 					Flows: []v1alpha1.Flow{
@@ -79,6 +85,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy Any: no leaf succeeded",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{Type: v1alpha1.SuccessPolicyAny},
 					Flows: []v1alpha1.Flow{
@@ -97,6 +104,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy Critical: critical flows succeeded",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{
 						Type:          v1alpha1.SuccessPolicyCritical,
@@ -114,6 +122,7 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Strategy Critical: critical flow failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					SuccessPolicy: &v1alpha1.SuccessPolicy{
 						Type:          v1alpha1.SuccessPolicyCritical,
@@ -131,7 +140,8 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 		{
 			name: "Default strategy: All",
 			workflow: &v1alpha1.Workflow{
-				Spec: v1alpha1.WorkflowSpec{},
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
+				Spec:       v1alpha1.WorkflowSpec{},
 			},
 			status: &v1alpha1.WorkflowStatus{
 				CompletedJobs: []string{"wf-f1", "wf-f2"},
@@ -143,8 +153,9 @@ func TestIsWorkflowSuccessful(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isWorkflowSuccessful(tt.workflow, tt.status, tt.allJobList); got != tt.expected {
-				t.Errorf("isWorkflowSuccessful() = %v, want %v", got, tt.expected)
+			s := strategy.GetStrategy(tt.workflow.Spec.SuccessPolicy)
+			if got := s.IsSuccessful(tt.workflow, tt.status, tt.allJobList); got != tt.expected {
+				t.Errorf("IsSuccessful() = %v, want %v", got, tt.expected)
 			}
 		})
 	}

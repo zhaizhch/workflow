@@ -19,7 +19,10 @@ package state
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workflow/state/strategy"
 )
 
 func TestIsWorkflowFailed(t *testing.T) {
@@ -33,6 +36,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "All: No failures -> Not Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A"}, {Name: "B"}},
 				},
@@ -45,6 +49,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "All: One failed, no retry -> Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A"}},
 				},
@@ -57,6 +62,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "All: One failed, ContinueOnFail -> Not Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A", ContinueOnFail: true}},
 				},
@@ -69,6 +75,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "All: One failed, retry available -> Not Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A", Retry: &v1alpha1.Retry{MaxRetries: 3}}},
 				},
@@ -82,6 +89,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "All: One failed, retry exhausted -> Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A", Retry: &v1alpha1.Retry{MaxRetries: 3}}},
 				},
@@ -97,6 +105,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "Critical: Critical flow failed -> Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A"}, {Name: "B"}},
 					SuccessPolicy: &v1alpha1.SuccessPolicy{
@@ -113,6 +122,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 		{
 			name: "Critical: Non-critical flow failed -> Not Failed",
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "A"}, {Name: "B"}},
 					SuccessPolicy: &v1alpha1.SuccessPolicy{
@@ -132,6 +142,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 			name: "Any: Path blocked (A failed, B depends on A) -> Failed",
 			// A (failed) -> B. Leaf is B. Path blocked.
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{
 						{Name: "A"},
@@ -149,6 +160,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 			name: "Any: One path open (A failed, B independent) -> Not Failed",
 			// A (failed), B (ok). Leafs: A, B. A is blocked, B is not.
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{
 						{Name: "A"},
@@ -166,6 +178,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 			name: "Any: Path recovered with ContinueOnFail -> Not Failed",
 			// A (failed+continue) -> B. Leaf B. Path NOT blocked.
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{
 						{Name: "A", ContinueOnFail: true},
@@ -183,6 +196,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 			name: "Any: Complex OR dependency (A failed, B ok, C depends on A or B) -> Not Failed",
 			// C depends on (A || B). A failed, B running/ok. C not blocked.
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{
 						{Name: "A"},
@@ -206,6 +220,7 @@ func TestIsWorkflowFailed(t *testing.T) {
 			name: "Any: Complex OR dependency Blocked (A failed, B failed, C depends on A or B) -> Failed",
 			// C depends on (A || B). A failed, B failed. C blocked.
 			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf"},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{
 						{Name: "A"},
@@ -229,9 +244,10 @@ func TestIsWorkflowFailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isWorkflowFailed(tt.workflow, tt.status)
+			s := strategy.GetStrategy(tt.workflow.Spec.SuccessPolicy)
+			got := s.IsFailed(tt.workflow, tt.status)
 			if got != tt.wantFailed {
-				t.Errorf("isWorkflowFailed() = %v, want %v", got, tt.wantFailed)
+				t.Errorf("IsFailed() = %v, want %v", got, tt.wantFailed)
 			}
 		})
 	}

@@ -41,6 +41,7 @@ func TestRunningState_Execute(t *testing.T) {
 			workflow: &v1alpha1.Workflow{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
+					Name:      "wf",
 				},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "flow1"}},
@@ -52,7 +53,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			action:        v1alpha1.SyncWorkflowAction,
-			completedJobs: []string{"Default/flow1"},
+			completedJobs: []string{"wf-flow1"},
 			failedJobs:    []string{},
 			allJobList:    1,
 			wantPhase:     v1alpha1.Succeed,
@@ -62,6 +63,7 @@ func TestRunningState_Execute(t *testing.T) {
 			workflow: &v1alpha1.Workflow{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
+					Name:      "wf",
 				},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{Name: "flow1"}}, // No Retry
@@ -74,7 +76,7 @@ func TestRunningState_Execute(t *testing.T) {
 			},
 			action:        v1alpha1.SyncWorkflowAction,
 			completedJobs: []string{},
-			failedJobs:    []string{"flow1"},
+			failedJobs:    []string{"wf-flow1"},
 			allJobList:    1,
 			wantPhase:     v1alpha1.Failed,
 		},
@@ -83,6 +85,7 @@ func TestRunningState_Execute(t *testing.T) {
 			workflow: &v1alpha1.Workflow{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
+					Name:      "wf",
 				},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{
@@ -100,9 +103,9 @@ func TestRunningState_Execute(t *testing.T) {
 			},
 			action:        v1alpha1.SyncWorkflowAction,
 			completedJobs: []string{},
-			failedJobs:    []string{"flow1"},
+			failedJobs:    []string{"wf-flow1"},
 			jobStatusList: []v1alpha1.JobStatus{
-				{Name: "flow1", RestartCount: 1}, // < Limit 3
+				{Name: "wf-flow1", RestartCount: 1}, // < Limit 3
 			},
 			allJobList: 1,
 			wantPhase:  v1alpha1.Running,
@@ -112,6 +115,7 @@ func TestRunningState_Execute(t *testing.T) {
 			workflow: &v1alpha1.Workflow{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
+					Name:      "wf",
 				},
 				Spec: v1alpha1.WorkflowSpec{
 					Flows: []v1alpha1.Flow{{
@@ -129,9 +133,9 @@ func TestRunningState_Execute(t *testing.T) {
 			},
 			action:        v1alpha1.SyncWorkflowAction,
 			completedJobs: []string{},
-			failedJobs:    []string{"flow1"},
+			failedJobs:    []string{"wf-flow1"},
 			jobStatusList: []v1alpha1.JobStatus{
-				{Name: "flow1", RestartCount: 3}, // >= Limit 3
+				{Name: "wf-flow1", RestartCount: 3}, // >= Limit 3
 			},
 			allJobList: 1,
 			wantPhase:  v1alpha1.Failed,

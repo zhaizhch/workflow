@@ -18,6 +18,7 @@ package state
 
 import (
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
+	"github.com/workflow.sh/work-flow/pkg/controllers/workflow/state/strategy"
 )
 
 type runningState struct {
@@ -28,13 +29,14 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 	switch action {
 	case v1alpha1.SyncWorkflowAction:
 		return SyncWorkflow(p.jobFlow, func(status *v1alpha1.WorkflowStatus, allJobList int) {
+			s := strategy.GetStrategy(p.jobFlow.Spec.SuccessPolicy)
 			// Check workflow success based on SuccessPolicy
-			if isWorkflowSuccessful(p.jobFlow, status, allJobList) {
+			if s.IsSuccessful(p.jobFlow, status, allJobList) {
 				UpdateWorkflowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
 			} else {
 				// Check workflow failure based on SuccessPolicy and ContinueOnFail
-				if isWorkflowFailed(p.jobFlow, status) {
+				if s.IsFailed(p.jobFlow, status) {
 					status.State.Phase = v1alpha1.Failed
 				}
 			}
