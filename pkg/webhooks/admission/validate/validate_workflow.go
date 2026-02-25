@@ -105,9 +105,32 @@ func validateWorkflowDAG(workflow *flowv1alpha1.Workflow, reviewResponse *admiss
 		return msg
 	}
 
-	graphMap := make(map[string][]string, len(workflow.Spec.Flows))
+	graphMap, msg := buildDependencyGraph(workflow.Spec.Flows)
+	if msg != "" {
+		reviewResponse.Allowed = false
+		return msg
+	}
 
-	for _, flow := range workflow.Spec.Flows {
+	vertices, err := LoadVertexs(graphMap)
+	if err != nil {
+		reviewResponse.Allowed = false
+		return FlowNotDAGError.Error() + ": " + err.Error()
+	}
+
+	if !IsDAG(vertices) {
+		reviewResponse.Allowed = false
+		return FlowNotDAGError.Error()
+	}
+
+	return ""
+}
+
+// buildDependencyGraph constructs a dependency graph map from the given flows
+// and returns an error message if any self-referencing dependencies are detected.
+func buildDependencyGraph(flows []flowv1alpha1.Flow) (map[string][]string, string) {
+	graphMap := make(map[string][]string, len(flows))
+
+	for _, flow := range flows {
 		var allDeps []string
 
 		if flow.DependsOn != nil {
@@ -126,8 +149,7 @@ func validateWorkflowDAG(workflow *flowv1alpha1.Workflow, reviewResponse *admiss
 			// Check for self-references in For dependencies
 			for _, target := range flow.For.DependsOn.Targets {
 				if target == flow.Name {
-					reviewResponse.Allowed = false
-					return fmt.Sprintf("flow '%s' has self-referencing For dependency", flow.Name)
+					return nil, fmt.Sprintf("flow '%s' has self-referencing For dependency", flow.Name)
 				}
 			}
 
@@ -135,8 +157,7 @@ func validateWorkflowDAG(workflow *flowv1alpha1.Workflow, reviewResponse *admiss
 			for _, group := range flow.For.DependsOn.OrGroups {
 				for _, target := range group.Targets {
 					if target == flow.Name {
-						reviewResponse.Allowed = false
-						return fmt.Sprintf("flow '%s' has self-referencing For dependency in OrGroups", flow.Name)
+						return nil, fmt.Sprintf("flow '%s' has self-referencing For dependency in OrGroups", flow.Name)
 					}
 				}
 			}
@@ -145,18 +166,7 @@ func validateWorkflowDAG(workflow *flowv1alpha1.Workflow, reviewResponse *admiss
 		graphMap[flow.Name] = allDeps
 	}
 
-	vertices, err := LoadVertexs(graphMap)
-	if err != nil {
-		reviewResponse.Allowed = false
-		return FlowNotDAGError.Error() + ": " + err.Error()
-	}
-
-	if !IsDAG(vertices) {
-		reviewResponse.Allowed = false
-		return FlowNotDAGError.Error()
-	}
-
-	return ""
+	return graphMap, ""
 }
 
 // validateSuccessPolicy validates the SuccessPolicy configuration

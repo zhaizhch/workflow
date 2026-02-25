@@ -79,48 +79,53 @@ func (wc *workflowcontroller) syncWorkflow(workflow *v1alpha1flow.Workflow, upda
 func (wc *workflowcontroller) deployJob(workflow *v1alpha1flow.Workflow) error {
 	for _, flow := range workflow.Spec.Flows {
 		_, err := wc.forEachReplica(workflow, flow.Name, v1alpha1flow.All, func(jobName string, index int) (bool, error) {
-			if wc.isJobTerminalSuccess(workflow, jobName) {
-				return true, nil
-			}
-
-			jobTemplate, err := wc.workTemplateInformer.Lister().WorkTemplates(workflow.Namespace).Get(flow.Name)
-			if err != nil {
-				return false, err
-			}
-			gvr := schema.GroupVersionResource{
-				Group:    jobTemplate.Spec.GVR.Group,
-				Version:  jobTemplate.Spec.GVR.Version,
-				Resource: jobTemplate.Spec.GVR.Resource,
-			}
-
-			// Check existence
-			existingJob, err := wc.dynamicClient.Resource(gvr).Namespace(workflow.Namespace).Get(context.Background(), jobName, metav1.GetOptions{})
-			if err != nil {
-				if errors.IsNotFound(err) {
-					// Check global and replica-level dependencies
-					satisfied, err := wc.checkDependencies(workflow, flow, index)
-					if err != nil {
-						return false, err
-					}
-					if satisfied {
-						if err := wc.createJob(workflow, flow, index); err != nil {
-							return false, err
-						}
-					}
-					return true, nil
-				}
-				return false, err
-			}
-
-			// Retry logic
-			wc.handleRetry(workflow, flow, existingJob, gvr, jobName)
-			return true, nil
+			return wc.processJobReplica(workflow, flow, jobName, index)
 		})
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (wc *workflowcontroller) processJobReplica(workflow *v1alpha1flow.Workflow, flow v1alpha1flow.Flow, jobName string, index int) (bool, error) {
+	if wc.isJobTerminalSuccess(workflow, jobName) {
+		return true, nil
+	}
+
+	jobTemplate, err := wc.workTemplateInformer.Lister().WorkTemplates(workflow.Namespace).Get(flow.Name)
+	if err != nil {
+		return false, err
+	}
+
+	gvr := schema.GroupVersionResource{
+		Group:    jobTemplate.Spec.GVR.Group,
+		Version:  jobTemplate.Spec.GVR.Version,
+		Resource: jobTemplate.Spec.GVR.Resource,
+	}
+
+	existingJob, err := wc.dynamicClient.Resource(gvr).Namespace(workflow.Namespace).Get(context.Background(), jobName, metav1.GetOptions{})
+
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return false, err
+		}
+
+		satisfied, err := wc.checkDependencies(workflow, flow, index)
+		if err != nil {
+			return false, err
+		}
+
+		if satisfied {
+			if err := wc.createJob(workflow, flow, index); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	}
+
+	wc.handleRetry(workflow, flow, existingJob, gvr, jobName)
+	return true, nil
 }
 
 func (wc *workflowcontroller) checkDependencies(workflow *v1alpha1flow.Workflow, flow v1alpha1flow.Flow, index int) (bool, error) {

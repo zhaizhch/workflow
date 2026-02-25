@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -38,6 +39,27 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 		return nil, err
 	}
 
+	workflowStatus := &v1alpha1flow.WorkflowStatus{
+		State: workflow.Status.State,
+	}
+
+	existingStatusMap := make(map[string]v1alpha1flow.JobStatus)
+	for _, js := range workflow.Status.JobStatusList {
+		existingStatusMap[js.Name] = js
+	}
+
+	processedJobs := wc.processClusterJobs(jobList, workflowStatus, existingStatusMap)
+	wc.reconcileJobStatusHistories(processedJobs, existingStatusMap, workflowStatus)
+
+	return workflowStatus, nil
+}
+
+func (wc *workflowcontroller) processClusterJobs(
+	jobList []unstructured.Unstructured,
+	workflowStatus *v1alpha1flow.WorkflowStatus,
+	existingStatusMap map[string]v1alpha1flow.JobStatus,
+) map[string]bool {
+
 	statusListJobMap := map[v1alpha1.JobPhase][]string{
 		v1alpha1.Pending:     {},
 		v1alpha1.Running:     {},
@@ -47,24 +69,18 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 		v1alpha1.Terminated:  {},
 		v1alpha1.Failed:      {},
 	}
-
 	unknownJobs := make([]string, 0)
 	conditions := make(map[string]v1alpha1flow.Condition)
 	jobStatusList := make([]v1alpha1flow.JobStatus, 0)
-	// Create a map of existing status for quick lookup
-	existingStatusMap := make(map[string]v1alpha1flow.JobStatus)
-	for _, js := range workflow.Status.JobStatusList {
-		existingStatusMap[js.Name] = js
-	}
-
-	// 1. Process jobs currently in the cluster
 	processedJobs := make(map[string]bool)
+
 	for _, job := range jobList {
 		wl := workload.GetWorkload(job.GroupVersionKind().Group)
 		if wl == nil {
 			klog.Warningf("No workload handler found for group %s, skipping job %s", job.GroupVersionKind().Group, job.GetName())
 			continue
 		}
+
 		jobStatus := wl.GetJobStatus(&job)
 		jobPhase := jobStatus.State
 
@@ -89,7 +105,6 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 		if existing, ok := existingStatusMap[job.GetName()]; ok {
 			newJobStatus.RestartCount = existing.RestartCount
 			newJobStatus.RunningHistories = existing.RunningHistories
-			// If creation timestamp has changed, it's a new job instance (retry)
 			if !creationTimestamp.Equal(&existing.StartTimestamp) && !existing.StartTimestamp.IsZero() {
 				newJobStatus.RestartCount++
 				klog.Infof("Detected new instance for job %s, incrementing RestartCount to %d", job.GetName(), newJobStatus.RestartCount)
@@ -99,28 +114,28 @@ func (wc *workflowcontroller) getAllJobStatus(workflow *v1alpha1flow.Workflow) (
 		processedJobs[job.GetName()] = true
 	}
 
-	// 2. Keep status for jobs that are currently missing (e.g. being retried/deleted)
+	workflowStatus.PendingJobs = statusListJobMap[v1alpha1.Pending]
+	workflowStatus.RunningJobs = statusListJobMap[v1alpha1.Running]
+	workflowStatus.FailedJobs = statusListJobMap[v1alpha1.Failed]
+	workflowStatus.CompletedJobs = statusListJobMap[v1alpha1.Completed]
+	workflowStatus.TerminatedJobs = statusListJobMap[v1alpha1.Terminated]
+	workflowStatus.UnKnowJobs = unknownJobs
+	workflowStatus.Conditions = conditions
+	workflowStatus.JobStatusList = jobStatusList
+
+	return processedJobs
+}
+
+func (wc *workflowcontroller) reconcileJobStatusHistories(
+	processedJobs map[string]bool,
+	existingStatusMap map[string]v1alpha1flow.JobStatus,
+	workflowStatus *v1alpha1flow.WorkflowStatus,
+) {
 	for name, existing := range existingStatusMap {
 		if !processedJobs[name] {
-			// Job is not in cluster, but we should keep its status and restart count
-			// so that when it's recreated, we can carry over the count.
-			jobStatusList = append(jobStatusList, existing)
+			workflowStatus.JobStatusList = append(workflowStatus.JobStatusList, existing)
 		}
 	}
-
-	workflowStatus := v1alpha1flow.WorkflowStatus{
-		PendingJobs:    statusListJobMap[v1alpha1.Pending],
-		RunningJobs:    statusListJobMap[v1alpha1.Running],
-		FailedJobs:     statusListJobMap[v1alpha1.Failed],
-		CompletedJobs:  statusListJobMap[v1alpha1.Completed],
-		TerminatedJobs: statusListJobMap[v1alpha1.Terminated],
-		UnKnowJobs:     unknownJobs,
-		JobStatusList:  jobStatusList,
-		Conditions:     conditions,
-		State:          workflow.Status.State,
-	}
-
-	return &workflowStatus, nil
 }
 
 func (wc *workflowcontroller) getJobStatusFromCluster(workflow *v1alpha1flow.Workflow, taskName, jobName string) (v1alpha1.JobPhase, error) {
@@ -194,7 +209,11 @@ func (wc *workflowcontroller) getJobIP(workflow *v1alpha1flow.Workflow, taskName
 		return "", fmt.Errorf("no pod labels found for job %s", jobName)
 	}
 
-	podList, err := wc.kubeClient.CoreV1().Pods(workflow.Namespace).List(context.Background(), metav1.ListOptions{
+	return wc.getPodIPFromLabels(workflow.Namespace, jobName, ls)
+}
+
+func (wc *workflowcontroller) getPodIPFromLabels(namespace, jobName string, ls map[string]string) (string, error) {
+	podList, err := wc.kubeClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(ls).String(),
 	})
 	if err != nil {
