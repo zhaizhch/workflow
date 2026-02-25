@@ -35,17 +35,8 @@ func (wc *workflowcontroller) syncWorkflow(workflow *v1alpha1flow.Workflow, upda
 	klog.V(4).Infof("Begin to sync Workflow %s.", workflow.Name)
 	defer klog.V(4).Infof("End sync Workflow %s.", workflow.Name)
 
-	// JobRetainPolicy Judging whether jobs are necessary to delete
-	shouldDelete := false
-	switch workflow.Spec.JobRetainPolicy {
-	case v1alpha1flow.Delete:
-		phase := workflow.Status.State.Phase
-		shouldDelete = phase == v1alpha1flow.Succeed || phase == v1alpha1flow.Failed || phase == v1alpha1flow.Terminating
-	case v1alpha1flow.DeleteOnSuccess:
-		shouldDelete = workflow.Status.State.Phase == v1alpha1flow.Succeed
-	}
-
-	if shouldDelete {
+	// 判断是否需要清理 Job：满足条件则删除并提前返回
+	if shouldDeleteJobs(workflow) {
 		if err := wc.deleteAllJobsCreatedByWorkflow(workflow); err != nil {
 			klog.Errorf("Failed to delete jobs of Workflow %v/%v: %v", workflow.Namespace, workflow.Name, err)
 			return err
@@ -53,7 +44,7 @@ func (wc *workflowcontroller) syncWorkflow(workflow *v1alpha1flow.Workflow, upda
 		return nil
 	}
 
-	// update workflow status first to ensure deployJob uses latest data
+	// 更新 Workflow 状态：首先获取最新的 Job 状态汇总，确保 deployJob 使用最新数据
 	workflowStatus, err := wc.getAllJobStatus(workflow)
 	if err != nil {
 		return err
@@ -67,13 +58,30 @@ func (wc *workflowcontroller) syncWorkflow(workflow *v1alpha1flow.Workflow, upda
 		return err
 	}
 
-	// deploy job by dependence order.
+	// 按依赖顺序依次区动 Job
 	if err := wc.deployJob(workflow); err != nil {
 		klog.Errorf("Failed to create jobs of Workflow %v/%v: %v", workflow.Namespace, workflow.Name, err)
 		return err
 	}
 
 	return nil
+}
+
+// shouldDeleteJobs 根据工作流的保留策略和当前状态，返回是否应该删除其创建的 Job。
+//
+// 支持两种策略：
+//   - Delete：成功、失败或终止时删除
+//   - DeleteOnSuccess：仅成功时删除
+func shouldDeleteJobs(workflow *v1alpha1flow.Workflow) bool {
+	phase := workflow.Status.State.Phase
+	switch workflow.Spec.JobRetainPolicy {
+	case v1alpha1flow.Delete:
+		// 终态均需删除（成功 / 失败 / 终止中）
+		return phase == v1alpha1flow.Succeed || phase == v1alpha1flow.Failed || phase == v1alpha1flow.Terminating
+	case v1alpha1flow.DeleteOnSuccess:
+		return phase == v1alpha1flow.Succeed
+	}
+	return false
 }
 
 func (wc *workflowcontroller) deployJob(workflow *v1alpha1flow.Workflow) error {

@@ -6,36 +6,51 @@ import (
 	"github.com/workflow.sh/work-flow/pkg/apis/flow/v1alpha1"
 )
 
-// GetPermanentlyFailedJobs returns jobs that are failed, retries exhausted, and NOT ContinueOnFail
+// findFlowByJobName 根据 job 名称在 Workflow.Spec.Flows 中查找匹配的 Flow 定义。
+// 消除了多处重复的线性查找代码（DRY 原则）。
+func findFlowByJobName(wf *v1alpha1.Workflow, jobName string) *v1alpha1.Flow {
+	for i := range wf.Spec.Flows {
+		if ContainsFlowName(jobName, wf.Spec.Flows[i].Name, wf.Name) {
+			return &wf.Spec.Flows[i]
+		}
+	}
+	return nil
+}
+
+// findFlowSpec 根据 flowName 精确匹配，返回 Flow 定义的指针。
+// 与 findFlowByJobName 的区别：该函数使用精确名称匹配而非前缀匹配。
+func findFlowSpec(wf *v1alpha1.Workflow, flowName string) *v1alpha1.Flow {
+	for i := range wf.Spec.Flows {
+		if wf.Spec.Flows[i].Name == flowName {
+			return &wf.Spec.Flows[i]
+		}
+	}
+	return nil
+}
+
+// GetPermanentlyFailedJobs 返回已永久失败（重试耗尽且无 ContinueOnFail）的 job 列表。
 func GetPermanentlyFailedJobs(wf *v1alpha1.Workflow, status *v1alpha1.WorkflowStatus) []string {
 	var failed []string
 	for _, failedJobName := range status.FailedJobs {
-		// Find flow spec
-		var matchedFlow *v1alpha1.Flow
-		for _, flow := range wf.Spec.Flows {
-			if ContainsFlowName(failedJobName, flow.Name, wf.Name) {
-				matchedFlow = &flow
-				break
-			}
-		}
+		matchedFlow := findFlowByJobName(wf, failedJobName)
 
 		if matchedFlow == nil {
-			failed = append(failed, failedJobName) // Unknown job, treat as failed
+			failed = append(failed, failedJobName) // 未知 Job，当作失败处理
 			continue
 		}
 
-		// Check ContinueOnFail
+		// 配置了 ContinueOnFail 的 Job 不计入决性失败
 		if matchedFlow.ContinueOnFail {
-			continue // Ignored failure
+			continue
 		}
 
-		// Check Retries
+		// 没有配置 Retry，直接认定失败
 		if matchedFlow.Retry == nil {
 			failed = append(failed, failedJobName)
 			continue
 		}
 
-		// Check restart count
+		// 检查重启次数，确认是否还可重试
 		canRetry := false
 		for _, js := range status.JobStatusList {
 			if js.Name == failedJobName {
@@ -90,15 +105,10 @@ func isNodeBlocked(flowName string, wf *v1alpha1.Workflow, graph map[string][]st
 		return true
 	}
 
-	var flowSpec *v1alpha1.Flow
-	for _, f := range wf.Spec.Flows {
-		if f.Name == flowName {
-			flowSpec = &f
-			break
-		}
-	}
-
+	// 使用统一的 findFlowSpec 函数，替代重复的线性查找代码
+	flowSpec := findFlowSpec(wf, flowName)
 	if flowSpec == nil {
+		cache[flowName] = true
 		return true
 	}
 

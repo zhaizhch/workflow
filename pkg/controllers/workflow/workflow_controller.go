@@ -161,33 +161,33 @@ func (wc *workflowcontroller) Initialize(opt *framework.ControllerOption) error 
 }
 
 func (wc *workflowcontroller) Run(stopCh <-chan struct{}) {
+	// 关闭所有分片队列
 	for i := 0; i < wc.workerNum; i++ {
 		queueIndex := i // capture loop variable
 		defer wc.queues[queueIndex].ShutDown()
 	}
 
+	// 启动各种 Informer Factory
 	wc.flowInformerFactory.Start(stopCh)
 	wc.dynamicInformerFactory.Start(stopCh)
 
-	for informerType, ok := range wc.flowInformerFactory.WaitForCacheSync(stopCh) {
-		if !ok {
-			klog.Errorf("caches failed to sync: %v", informerType)
-			return
-		}
+	// 等待 flow informer 缓存同步完成
+	if !waitForMapCacheSync(stopCh, wc.flowInformerFactory.WaitForCacheSync(stopCh), "flow") {
+		return
 	}
 
+	// 等待所有通用 Job informer 缓存同步完成
 	if !cache.WaitForCacheSync(stopCh, wc.genericJobSynced...) {
 		klog.Errorf("generic job caches failed to sync")
 		return
 	}
 
-	for informerType, ok := range wc.dynamicInformerFactory.WaitForCacheSync(stopCh) {
-		if !ok {
-			klog.Errorf("dynamic caches failed to sync: %v", informerType)
-			return
-		}
+	// 等待 dynamic informer 缓存同步完成
+	if !waitForMapCacheSync(stopCh, wc.dynamicInformerFactory.WaitForCacheSync(stopCh), "dynamic") {
+		return
 	}
 
+	// 启动多个 worker goroutine
 	for i := 0; i < wc.workerNum; i++ {
 		queueIndex := i
 		go wait.Until(func() { wc.worker(queueIndex) }, time.Second, stopCh)
@@ -196,6 +196,20 @@ func (wc *workflowcontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("WorkflowController is running with %d workers ... ", wc.workerNum)
 
 	<-stopCh
+}
+
+// waitForMapCacheSync 等待 map 格式的 informer 同步结果全部完成，消除了多处重复的 cache sync 等待代码。
+// 参数：
+//   - label: 日志标识符，用于区分不同的 informer 类型
+//   - synced: WaitForCacheSync 返回的 map，键为 informer 类型，値为是否同步成功
+func waitForMapCacheSync[T comparable](stopCh <-chan struct{}, synced map[T]bool, label string) bool {
+	for informerType, ok := range synced {
+		if !ok {
+			klog.Errorf("%s caches failed to sync: %v", label, informerType)
+			return false
+		}
+	}
+	return true
 }
 
 func (wc *workflowcontroller) worker(queueIndex int) {
