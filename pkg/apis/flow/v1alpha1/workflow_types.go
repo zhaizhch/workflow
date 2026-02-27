@@ -23,24 +23,24 @@ import (
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
-// WorkflowSpec defines the desired state of Workflow
+// WorkflowSpec 定义工作流的期望状态
 type WorkflowSpec struct {
 	// +optional
 	Flows []Flow `json:"flows,omitempty" protobuf:"bytes,1,rep,name=flows"`
 	// +optional
-	JobRetainPolicy RetainPolicy `json:"jobRetainPolicy,omitempty" protobuf:"bytes,2,opt,name=jobRetainPolicy"`
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,4,rep,name=plugins"`
+	// SuccessPolicy 定义如何确定工作流是否成功
+	// 默认值为 All (所有流程必须成功)
+	// +optional
+	SuccessPolicy *SuccessPolicy `json:"successPolicy,omitempty" protobuf:"bytes,5,opt,name=successPolicy"`
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,3,opt,name=schedulerName"`
 	// +optional
-	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,4,rep,name=plugins"`
-	// SuccessPolicy defines how to determine workflow success
-	// Defaults to All (all flows must succeed)
-	// +optional
-	SuccessPolicy *SuccessPolicy `json:"successPolicy,omitempty" protobuf:"bytes,5,opt,name=successPolicy"`
+	JobRetainPolicy RetainPolicy `json:"jobRetainPolicy,omitempty" protobuf:"bytes,2,opt,name=jobRetainPolicy"`
 }
 
 // +k8s:deepcopy-gen=true
-// Flow defines the dependent of jobs
+// Flow 定义了作业流程及其依赖关系
 type Flow struct {
 	// +kubebuilder:validation:MinLength=1
 	// +required
@@ -58,27 +58,30 @@ type Flow struct {
 }
 
 // +k8s:deepcopy-gen=true
+// For 定义了并行迭代作业
 type For struct {
 	// +optional
-	Replicas *int32 `json:"replicas,omitempty" protobuf:"varint,1,opt,name=replicas"`
-	// +optional
 	DependsOn *DependsOn `json:"dependsOn,omitempty" protobuf:"bytes,2,opt,name=dependsOn"`
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty" protobuf:"varint,1,opt,name=replicas"`
 }
 
 // +k8s:deepcopy-gen=true
+// Retry 定义了任务重试策略
 type Retry struct {
 	// +optional
-	MaxRetries int32 `json:"maxRetries,omitempty" protobuf:"varint,1,opt,name=maxRetries"`
-	// +optional
 	Interval string `json:"interval,omitempty" protobuf:"bytes,2,opt,name=interval"`
+	// +optional
+	MaxRetries int32 `json:"maxRetries,omitempty" protobuf:"varint,1,opt,name=maxRetries"`
 }
 
+// DependsOn 定义了工作流的依赖条件
 type DependsOn struct {
-	// Simple AND: All targets must meet condition
+	// 简单的 AND 逻辑：所有目标必须满足条件
 	// +optional
 	Targets []string `json:"targets,omitempty" protobuf:"bytes,1,rep,name=targets"`
-	// OR logic: One of these groups must meet condition.
-	// Each group is itself an AND of its targets/probe.
+	// OR 逻辑：其中一个组必须满足条件。
+	// 每个组本身是其目标/探测的 AND 逻辑。
 	// +optional
 	OrGroups []DependencyGroup `json:"orGroups,omitempty" protobuf:"bytes,4,rep,name=orGroups"`
 	// +optional
@@ -88,6 +91,7 @@ type DependsOn struct {
 }
 
 // +k8s:deepcopy-gen=true
+// DependencyGroup 定义依赖组，用于实现 OR 逻辑中的 AND 条件
 type DependencyGroup struct {
 	// +optional
 	Targets []string `json:"targets,omitempty" protobuf:"bytes,1,rep,name=targets"`
@@ -97,6 +101,7 @@ type DependencyGroup struct {
 	Strategy DependencyStrategy `json:"strategy,omitempty" protobuf:"bytes,3,opt,name=strategy"`
 }
 
+// DependencyStrategy 定义依赖策略
 type DependencyStrategy string
 
 const (
@@ -104,28 +109,29 @@ const (
 	Any DependencyStrategy = "Any"
 )
 
-// SuccessPolicyType defines how to determine workflow success
+// SuccessPolicyType 定义如何确定工作流的成功状态
 type SuccessPolicyType string
 
 const (
-	// SuccessPolicyAll requires all flows to succeed
+	// SuccessPolicyAll 要求所有流程均成功
 	SuccessPolicyAll SuccessPolicyType = "All"
-	// SuccessPolicyAny requires at least one leaf flow to succeed
+	// SuccessPolicyAny 要求至少有一个叶子流程成功
 	SuccessPolicyAny SuccessPolicyType = "Any"
-	// SuccessPolicyCritical requires only critical flows to succeed
+	// SuccessPolicyCritical 仅要求关键流程成功
 	SuccessPolicyCritical SuccessPolicyType = "Critical"
 )
 
 // +k8s:deepcopy-gen=true
+// SuccessPolicy 工作流级别的成功策略配置
 type SuccessPolicy struct {
-	// Type defines the success policy type
+	// Type 定义成功策略类型
 	// +optional
 	// +kubebuilder:default=All
 	// +kubebuilder:validation:Enum=All;Any;Critical
 	Type SuccessPolicyType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type"`
 
-	// CriticalFlows specifies critical flow names
-	// Required when Type=Critical
+	// CriticalFlows 指定关键流程的名称
+	// 当 Type 为 Critical 时是必填项
 	// +optional
 	CriticalFlows []string `json:"criticalFlows,omitempty" protobuf:"bytes,2,rep,name=criticalFlows"`
 }
@@ -133,12 +139,15 @@ type SuccessPolicy struct {
 // +k8s:deepcopy-gen=true
 // +kubebuilder:pruning:PreserveUnknownFields
 // +kubebuilder:validation:Schemaless
+// Patch 保存任务补丁配置
 type Patch struct {
 	// +optional
 	runtime.RawExtension `json:",inline"`
 }
 
-type Probe struct { // slices之间可以是或的关系也可以是与的关系，但是httpGetList和tcpSocketList之间是与的关系
+// Probe 定义状态探测条件
+// slices之间可以是或的关系也可以是与的关系，但是httpGetList和tcpSocketList之间是与的关系
+type Probe struct {
 	// +optional
 	HttpGetList []HttpGet `json:"httpGetList,omitempty" protobuf:"bytes,1,rep,name=httpGetList"`
 	// +optional
@@ -147,6 +156,7 @@ type Probe struct { // slices之间可以是或的关系也可以是与的关系
 	TaskStatusList []TaskStatus `json:"taskStatusList,omitempty" protobuf:"bytes,3,rep,name=taskStatusList"`
 }
 
+// HttpGet 定义 HTTP GET 探测
 type HttpGet struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
@@ -154,13 +164,14 @@ type HttpGet struct {
 	// +optional
 	Path string `json:"path,omitempty" protobuf:"bytes,2,opt,name=path"`
 	// +optional
+	HTTPHeader v1.HTTPHeader `json:"httpHeader,omitempty" protobuf:"bytes,4,opt,name=httpHeader"`
+	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=65535
 	Port int `json:"port,omitempty" protobuf:"varint,3,opt,name=port"`
-	// +optional
-	HTTPHeader v1.HTTPHeader `json:"httpHeader,omitempty" protobuf:"bytes,4,opt,name=httpHeader"`
 }
 
+// TcpSocket 定义 TCP Socket 探测
 type TcpSocket struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
@@ -171,6 +182,7 @@ type TcpSocket struct {
 	Port int `json:"port" protobuf:"varint,2,opt,name=port"`
 }
 
+// TaskStatus 定义任务状态匹配探测
 type TaskStatus struct {
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
@@ -180,7 +192,7 @@ type TaskStatus struct {
 	Phase string `json:"phase,omitempty" protobuf:"bytes,2,opt,name=phase"`
 }
 
-// WorkflowStatus defines the observed state of Workflow
+// WorkflowStatus 定义工作流的观测状态
 type WorkflowStatus struct {
 	// +optional
 	PendingJobs []string `json:"pendingJobs,omitempty" protobuf:"bytes,1,rep,name=pendingJobs"`
@@ -202,6 +214,7 @@ type WorkflowStatus struct {
 	State State `json:"state,omitempty" protobuf:"bytes,9,opt,name=state"`
 }
 
+// JobStatus 记录子作业的状态详情
 type JobStatus struct {
 	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
@@ -211,13 +224,14 @@ type JobStatus struct {
 	StartTimestamp metav1.Time `json:"startTimestamp,omitempty" protobuf:"bytes,3,opt,name=startTimestamp"`
 	// +optional
 	EndTimestamp metav1.Time `json:"endTimestamp,omitempty" protobuf:"bytes,4,opt,name=endTimestamp"`
+	// +optional
+	RunningHistories []JobRunningHistory `json:"runningHistories,omitempty" protobuf:"bytes,6,rep,name=runningHistories"`
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	RestartCount int32 `json:"restartCount,omitempty" protobuf:"varint,5,opt,name=restartCount"`
-	// +optional
-	RunningHistories []JobRunningHistory `json:"runningHistories,omitempty" protobuf:"bytes,6,rep,name=runningHistories"`
 }
 
+// JobRunningHistory 记录子作业的运行历史
 type JobRunningHistory struct {
 	// +optional
 	StartTimestamp metav1.Time `json:"startTimestamp,omitempty" protobuf:"bytes,1,opt,name=startTimestamp"`
@@ -227,11 +241,13 @@ type JobRunningHistory struct {
 	State batchv1alpha1.JobPhase `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
 }
 
+// State 定义阶段状态
 type State struct {
 	// +optional
 	Phase Phase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 }
 
+// RetainPolicy 作业保留策略
 // +kubebuilder:validation:Enum=retain;delete;delete-on-success
 type RetainPolicy string
 
@@ -241,6 +257,7 @@ const (
 	DeleteOnSuccess RetainPolicy = "delete-on-success"
 )
 
+// Phase 工作流整体阶段
 // +kubebuilder:validation:Enum=Succeed;Terminating;Failed;Running;Pending
 type Phase string
 
@@ -253,6 +270,7 @@ const (
 )
 
 // +k8s:deepcopy-gen=true
+// Condition 定义状态变更发生的条件与指标
 type Condition struct {
 	Phase           batchv1alpha1.JobPhase             `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 	CreateTimestamp metav1.Time                        `json:"createTime,omitempty" protobuf:"bytes,2,opt,name=createTime"`
@@ -268,7 +286,7 @@ type Condition struct {
 // +kubebuilder:resource:path=workflows,shortName=jf
 //+kubebuilder:subresource:status
 
-// Workflow is the Schema for the workflows API
+// Workflow 是 workflows API 的 Schema 结构
 type Workflow struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
@@ -280,7 +298,7 @@ type Workflow struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 //+kubebuilder:object:root=true
 
-// WorkflowList contains a list of Workflow
+// WorkflowList 包含一系列的 Workflow 资源列表
 type WorkflowList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
